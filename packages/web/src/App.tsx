@@ -7,6 +7,7 @@ import { StatBadge } from "./components/StatBadge";
 import { FilterBar } from "./components/FilterBar";
 import { AiAnswer } from "./components/AiAnswer";
 import { McpBanner } from "./components/McpBanner";
+import { CommandPalette } from "./components/CommandPalette";
 import { api, type ApiContentItem, type ApiStats } from "./lib/api";
 import { colors, TYPE_META } from "./lib/theme";
 
@@ -61,6 +62,8 @@ export default function App() {
   }
 
   return (
+    <>
+    <CommandPalette />
     <div
       style={{
         minHeight: "100vh",
@@ -180,5 +183,6 @@ export default function App() {
         <McpBanner />
       </div>
     </div>
+    </>
   );
 }

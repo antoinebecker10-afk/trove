@@ -150,9 +150,81 @@ export function ContentCard({ item, index }: ContentCardProps) {
                 : null}
             </span>
           </div>
+
+          {/* Actions — visible on hover */}
+          {hovered && (
+            <div
+              style={{
+                display: "flex",
+                gap: "6px",
+                marginTop: "8px",
+                paddingTop: "8px",
+                borderTop: `1px solid ${colors.border}`,
+              }}
+            >
+              <CardAction
+                label={item.source === "github" ? "OPEN ON GITHUB" : "COPY PATH"}
+                color={meta.color}
+                onClick={() => {
+                  if (item.source === "github" || item.uri.startsWith("http")) {
+                    window.open(item.uri, "_blank", "noopener");
+                  } else {
+                    navigator.clipboard.writeText(item.uri).catch(() => {});
+                  }
+                }}
+              />
+              {item.source === "local" && (
+                <CardAction
+                  label="OPEN IN IDE"
+                  color={colors.cyan}
+                  onClick={() => {
+                    // vscode:// protocol to open file directly
+                    window.open(`vscode://file${item.uri}`, "_self");
+                  }}
+                />
+              )}
+              <CardAction
+                label="COPY URI"
+                color={colors.textDim}
+                onClick={() => {
+                  navigator.clipboard.writeText(item.uri).catch(() => {});
+                }}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+function CardAction({
+  label,
+  color,
+  onClick,
+}: {
+  label: string;
+  color: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      style={{
+        fontSize: "9px",
+        fontFamily: fonts.mono,
+        letterSpacing: "0.08em",
+        padding: "3px 10px",
+        background: `${color}15`,
+        border: `1px solid ${color}44`,
+        borderRadius: "2px",
+        color,
+        cursor: "pointer",
+        transition: "all 0.1s",
+      }}
+    >
+      {label}
+    </button>
   );
 }
 

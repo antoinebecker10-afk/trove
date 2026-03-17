@@ -5,6 +5,9 @@ import { registerSearchTool } from "./tools/search.js";
 import { registerListSourcesTool } from "./tools/list-sources.js";
 import { registerGetContentTool } from "./tools/get-content.js";
 import { registerReindexTool } from "./tools/reindex.js";
+import { registerOpenFileTool } from "./tools/open-file.js";
+import { registerFindAndOpenTool } from "./tools/find-and-open.js";
+import { registerLocateTool } from "./tools/locate.js";
 
 export interface TroveMcpOptions {
   cwd?: string;
@@ -31,6 +34,9 @@ export async function startMcpServer(options: TroveMcpOptions = {}): Promise<voi
   registerListSourcesTool(server, engine);
   registerGetContentTool(server, engine);
   registerReindexTool(server, engine);
+  registerOpenFileTool(server, engine);
+  registerFindAndOpenTool(server, engine);
+  registerLocateTool(server, engine);
 
   // Connect via stdio transport
   const transport = new StdioServerTransport();
