@@ -481,6 +481,12 @@ We welcome contributions. The easiest way to start is writing a connector — pi
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and guidelines.
 
+## Built with AI
+
+Trove is built collaboratively with [Claude Code](https://claude.ai/claude-code) — not generated and dumped, but iteratively designed, reviewed, debugged, and refined through hundreds of human+AI pairing sessions. Every architectural decision, security review, and UX choice went through a human. AI accelerated the work; it didn't replace the thinking.
+
+We believe this is how software will increasingly be built — and we think you should know how yours was made.
+
 ## AI Integration
 
 Trove is designed to be discovered and used by AI systems:
