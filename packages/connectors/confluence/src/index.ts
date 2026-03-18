@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RateLimiter } from "@trove/shared";
 import type { Connector, ContentItem, IndexOptions } from "@trove/shared";
 
 const ConfluenceConfigSchema = z.object({
@@ -78,6 +79,8 @@ function stripHtmlTags(html: string): string {
     .trim();
 }
 
+const limiter = new RateLimiter(3);
+
 function apiBase(domain: string): string {
   return `https://${domain}.atlassian.net/wiki/api/v2`;
 }
@@ -91,6 +94,7 @@ async function apiFetch(
   headers: Record<string, string>,
   signal?: AbortSignal,
 ): Promise<Response> {
+  await limiter.wait();
   const response = await fetch(url, { headers, signal });
   if (!response.ok) {
     await response.text().catch(() => {});

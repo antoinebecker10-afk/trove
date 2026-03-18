@@ -39,6 +39,7 @@ export default function App() {
   const [apiError, setApiError] = useState<string | null>(null);
   const [previewItem, setPreviewItem] = useState<ApiContentItem | null>(null);
   const [moveItem, setMoveItem] = useState<ApiContentItem | null>(null);
+  const [connectedSources, setConnectedSources] = useState<string[]>([]);
 
   useEffect(() => {
     if (booted) {
@@ -47,6 +48,15 @@ export default function App() {
         .catch((err: unknown) => {
           setApiError(err instanceof Error ? err.message : "Could not reach API");
         });
+      // Fetch connected sources for filter bar
+      api.connectors()
+        .then((data) => {
+          const connected = data.connectors
+            ?.filter((c: { status: string }) => c.status === "connected")
+            .map((c: { id: string }) => c.id) ?? [];
+          setConnectedSources(connected);
+        })
+        .catch(() => {});
     }
   }, [booted]);
 
@@ -199,8 +209,24 @@ export default function App() {
                 <SearchBar value={query} onChange={setQuery} onSearch={handleSearch} loading={loading} />
               </div>
 
-              {aiAnswer && <AiAnswer text={aiAnswer} />}
-              <FilterBar active={filter} onFilter={handleFilter} activeSource={sourceFilter} onSourceFilter={handleSourceFilter} resultCount={results.length} />
+              {aiAnswer && <AiAnswer text={aiAnswer} onSuggest={(term) => {
+                setQuery(term);
+                setTimeout(() => {
+                  // Trigger search with the suggested term
+                  setLoading(true);
+                  setAiAnswer(null);
+                  const filterType = filter !== "All" ? filter.toLowerCase() : undefined;
+                  const filterSource = sourceFilter !== "All" ? sourceFilter.toLowerCase() : undefined;
+                  api.search(term, filterType, filterSource)
+                    .then((data) => {
+                      setResults(data.results);
+                      if (data.aiAnswer) setAiAnswer(data.aiAnswer);
+                    })
+                    .catch(() => {})
+                    .finally(() => setLoading(false));
+                }, 0);
+              }} />}
+              <FilterBar active={filter} onFilter={handleFilter} activeSource={sourceFilter} onSourceFilter={handleSourceFilter} resultCount={results.length} connectedSources={connectedSources} />
 
               {loading ? (
                 <div style={{ textAlign: "center", padding: "40px", color: colors.brand, fontSize: "12px", letterSpacing: "0.1em" }}>

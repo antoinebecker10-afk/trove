@@ -6,6 +6,9 @@ import { realpath } from "node:fs/promises";
 
 export const PORT = Number(process.env.TROVE_API_PORT ?? 7334);
 export const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://localhost:11434";
+/** Model for RAG search answers — Mistral excels at instruction-following with context */
+export const OLLAMA_RAG_MODEL = process.env.OLLAMA_RAG_MODEL ?? "mistral:latest";
+/** Model for general chat/AI tasks */
 export const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "qwen3:8b";
 
 // --- Auth token: generated once per server start, printed to console ---
@@ -14,9 +17,11 @@ export const AUTH_TOKEN = process.env.TROVE_API_TOKEN ?? randomBytes(32).toStrin
 export const ALLOWED_ORIGINS = new Set([
   "http://localhost:5173",
   "http://localhost:5174",
+  "http://localhost:7332",
   `http://localhost:${PORT}`,
   "http://127.0.0.1:5173",
   "http://127.0.0.1:5174",
+  "http://127.0.0.1:7332",
   `http://127.0.0.1:${PORT}`,
 ]);
 
@@ -32,7 +37,7 @@ export function getCorsOrigin(req: IncomingMessage): string {
 export function json(res: ServerResponse, data: unknown, status = 200): void {
   const existing = res.getHeader("Access-Control-Allow-Origin");
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (!existing) headers["Access-Control-Allow-Origin"] = "";
+  if (existing) headers["Access-Control-Allow-Origin"] = String(existing);
   res.writeHead(status, headers);
   res.end(JSON.stringify(data));
 }
@@ -74,8 +79,9 @@ export function checkAuth(req: IncomingMessage, res: ServerResponse): boolean {
   return true;
 }
 
-// --- Rate limiting: 100 req/min per IP ---
-const RATE_LIMIT_MAX = 100;
+// --- Rate limiting: per IP (relaxed in dev, strict in prod) ---
+const isDev = process.env.NODE_ENV !== "production";
+const RATE_LIMIT_MAX = isDev ? 600 : 100;
 const RATE_LIMIT_WINDOW = 60_000;
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 

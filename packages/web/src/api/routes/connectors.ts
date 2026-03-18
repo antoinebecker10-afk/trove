@@ -1,8 +1,13 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { RouteContext } from "../types.js";
 import { json, error, readBody } from "../middleware.js";
+
+/** Resolve the monorepo root (where .trove.yml and .env live). */
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = resolve(__dirname, "..", "..", "..", "..", "..");
 
 export async function handleConnectorRoutes(
   url: string,
@@ -13,17 +18,17 @@ export async function handleConnectorRoutes(
 ): Promise<boolean> {
   // GET /api/connectors — list available connectors + status
   if (url.startsWith("/api/connectors") && method === "GET" && !url.includes("/api/connectors/")) {
-    const configPath = resolve(process.cwd(), ".trove.yml");
+    const configPath = resolve(PROJECT_ROOT, ".trove.yml");
     let configYaml = "";
     try { configYaml = await readFile(configPath, "utf-8"); } catch { /* no config */ }
 
-    const envPath = resolve(process.cwd(), ".env");
+    const envPath = resolve(PROJECT_ROOT, ".env");
     let envContent = "";
     try { envContent = await readFile(envPath, "utf-8"); } catch { /* no env */ }
 
     // Parse which connectors are configured
     const configuredConnectors = new Set<string>();
-    const configuredRegex = /connector:\s*(\w+)/g;
+    const configuredRegex = /connector:\s*([\w-]+)/g;
     let match;
     while ((match = configuredRegex.exec(configYaml)) !== null) {
       configuredConnectors.add(match[1]);
@@ -332,7 +337,9 @@ export async function handleConnectorRoutes(
   // POST /api/connectors/setup — configure a connector
   if (url.startsWith("/api/connectors/setup") && method === "POST") {
     const body = await readBody(req);
-    const { connectorId, config: connConfig, token } = JSON.parse(body) as {
+    let bodyParsed: Record<string, unknown>;
+    try { bodyParsed = JSON.parse(body); } catch { error(res, "Invalid JSON", 400); return true; }
+    const { connectorId, config: connConfig, token } = bodyParsed as {
       connectorId: string;
       config: Record<string, string>;
       token?: string;
@@ -343,8 +350,8 @@ export async function handleConnectorRoutes(
       return true;
     }
 
-    const configPath = resolve(process.cwd(), ".trove.yml");
-    const envPath = resolve(process.cwd(), ".env");
+    const configPath = resolve(PROJECT_ROOT, ".trove.yml");
+    const envPath = resolve(PROJECT_ROOT, ".env");
 
     // Save token to .env if provided
     if (token) {
@@ -422,14 +429,16 @@ export async function handleConnectorRoutes(
   // POST /api/connectors/disconnect — remove a connector
   if (url.startsWith("/api/connectors/disconnect") && method === "POST") {
     const body = await readBody(req);
-    const { connectorId } = JSON.parse(body) as { connectorId: string };
+    let parsed2: Record<string, unknown>;
+    try { parsed2 = JSON.parse(body); } catch { error(res, "Invalid JSON", 400); return true; }
+    const { connectorId } = parsed2 as { connectorId: string };
 
     if (!connectorId) {
       error(res, "Missing connectorId", 400);
       return true;
     }
 
-    const configPath = resolve(process.cwd(), ".trove.yml");
+    const configPath = resolve(PROJECT_ROOT, ".trove.yml");
     let configContent = "";
     try { configContent = await readFile(configPath, "utf-8"); } catch {
       error(res, "No config file found", 404);
@@ -455,18 +464,66 @@ export async function handleConnectorRoutes(
     return true;
   }
 
-  // POST /api/connectors/index — index a specific connector
+  // POST /api/connectors/index — index a specific connector (SSE stream)
   if (url.startsWith("/api/connectors/index") && method === "POST") {
     const body = await readBody(req);
-    const { connectorId } = JSON.parse(body) as { connectorId: string };
+    let parsed3: Record<string, unknown>;
+    try { parsed3 = JSON.parse(body); } catch { error(res, "Invalid JSON", 400); return true; }
+    const { connectorId, stream } = parsed3 as { connectorId: string; stream?: boolean };
 
-    try {
-      const eng = await ctx.engine();
-      const count = await eng.index(connectorId);
-      json(res, { ok: true, count });
-    } catch (err) {
-      console.error("[trove-api] index error:", err);
-      error(res, "Index failed");
+    if (stream) {
+      // SSE: stream progress events
+      const origin = req.headers.origin ?? "";
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        ...(origin ? { "Access-Control-Allow-Origin": origin } : {}),
+      });
+
+      const send = (event: string, data: unknown) => {
+        res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      };
+
+      // Capture stderr logs during indexing and forward as SSE events
+      const origStderr = process.stderr.write.bind(process.stderr);
+      const stderrProxy = (chunk: string | Uint8Array, ...args: unknown[]): boolean => {
+        const text = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString();
+        const lines = text.split("\n").filter((l) => l.trim());
+        for (const line of lines) {
+          if (line.startsWith("[trove]")) {
+            send("log", { message: line });
+          }
+        }
+        return origStderr(chunk, ...args as [BufferEncoding?, ((error: Error | null | undefined) => void)?]);
+      };
+      process.stderr.write = stderrProxy as typeof process.stderr.write;
+
+      try {
+        const eng = await ctx.engine();
+        send("start", { connectorId });
+        send("log", { message: `[trove] Indexing ${connectorId}...` });
+        const count = await eng.index(connectorId, {
+          onProgress: (n) => send("progress", { connectorId, count: n }),
+        });
+        send("done", { connectorId, count });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Index failed";
+        send("error", { connectorId, error: msg });
+      } finally {
+        process.stderr.write = origStderr;
+      }
+      res.end();
+    } else {
+      // Non-streaming fallback
+      try {
+        const eng = await ctx.engine();
+        const count = await eng.index(connectorId);
+        json(res, { ok: true, count });
+      } catch (err) {
+        console.error("[trove-api] index error:", err);
+        error(res, "Index failed");
+      }
     }
     return true;
   }

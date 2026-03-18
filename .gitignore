@@ -40,3 +40,6 @@ desktop.ini
 
 # Claude Code memory — personal data
 .claude/
+
+# OCR trained data (downloaded at runtime by tesseract.js)
+*.traineddata

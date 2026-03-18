@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RateLimiter } from "@trove/shared";
 import type { Connector, ContentItem, IndexOptions } from "@trove/shared";
 
 const GithubConfigSchema = z.object({
@@ -25,6 +26,8 @@ interface GitHubRepo {
   default_branch: string;
 }
 
+const limiter = new RateLimiter(5);
+
 /**
  * Fetch all pages of a GitHub API endpoint.
  * Uses Link header for pagination.
@@ -40,6 +43,7 @@ async function fetchAllPages<T>(
   while (nextUrl) {
     if (signal?.aborted) break;
 
+    await limiter.wait();
     const response: Response = await fetch(nextUrl, { headers, signal });
 
     if (!response.ok) {
@@ -76,6 +80,7 @@ async function fetchReadme(
   headers: Record<string, string>,
 ): Promise<string | undefined> {
   try {
+    await limiter.wait();
     const response = await fetch(
       `https://api.github.com/repos/${fullName}/readme`,
       {

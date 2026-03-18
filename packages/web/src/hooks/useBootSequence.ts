@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { api } from "../lib/api";
 
 export type BootPhase = "logo-in" | "logo-shrink" | "terminal" | "stats" | "fade-out" | "done";
 
@@ -10,13 +11,48 @@ interface BootLine {
   done: boolean;
 }
 
-const TERMINAL_LINES: Array<{ prefix: string; text: string; color: string }> = [
+/** Fallback lines if API is unreachable */
+const FALLBACK_LINES: Array<{ prefix: string; text: string; color: string }> = [
   { prefix: "[boot]", text: "trove v0.1.0", color: "#e5e5e5" },
-  { prefix: "[init]", text: "scanning sources...", color: "#e5e5e5" },
-  { prefix: "[index]", text: "4,616 items across 2 sources", color: "#22c55e" },
+  { prefix: "[init]", text: "connecting to engine...", color: "#e5e5e5" },
+  { prefix: "[warn]", text: "api offline — retrying on load", color: "#f97316" },
   { prefix: "[ready]", text: "file manager \u2713 | search \u2713 | launcher \u2713", color: "#22c55e" },
   { prefix: "[ok]", text: "system online", color: "#22c55e" },
 ];
+
+async function fetchBootLines(): Promise<Array<{ prefix: string; text: string; color: string }>> {
+  try {
+    const [statsData, connectorsData] = await Promise.all([
+      api.stats(),
+      api.connectors().catch(() => ({ connectors: [] })),
+    ]);
+
+    const sources = connectorsData.connectors
+      ?.filter((c: { status: string }) => c.status === "connected")
+      .map((c: { name: string }) => c.name) ?? [];
+
+    const sourceList = sources.length > 0 ? sources.join(", ") : "local";
+
+    const typeParts: string[] = [];
+    if (statsData.byType) {
+      for (const [type, count] of Object.entries(statsData.byType)) {
+        if (count > 0) typeParts.push(`${count} ${type}s`);
+      }
+    }
+    const typeStr = typeParts.length > 0 ? typeParts.join(" \u00B7 ") : "ready";
+
+    return [
+      { prefix: "[boot]", text: "trove v0.1.0", color: "#e5e5e5" },
+      { prefix: "[init]", text: `loading ${sources.length} source${sources.length !== 1 ? "s" : ""}: ${sourceList}`, color: "#e5e5e5" },
+      { prefix: "[index]", text: `${statsData.totalItems.toLocaleString()} items indexed`, color: "#22c55e" },
+      { prefix: "[data]", text: typeStr, color: "#06b6d4" },
+      { prefix: "[ready]", text: "file manager \u2713 | search \u2713 | launcher \u2713", color: "#22c55e" },
+      { prefix: "[ok]", text: "system online", color: "#22c55e" },
+    ];
+  } catch {
+    return FALLBACK_LINES;
+  }
+}
 
 const CHAR_DELAY = 12;
 const LINE_PAUSE = 80;
@@ -66,10 +102,12 @@ export function useBootSequence(): {
       setTerminalOpacity(1);
     }, 500);
 
-    // Phase 3: Terminal lines start (800ms)
+    // Phase 3: Terminal lines start (800ms) — fetch real data while logo animates
+    const linesPromise = fetchBootLines();
+
     addTimeout(() => {
       setPhase("terminal");
-      typeLines();
+      linesPromise.then(typeLines);
     }, 800);
 
     // Cursor blink
@@ -77,13 +115,13 @@ export function useBootSequence(): {
       setCursorVisible((v) => !v);
     }, 530);
 
-    function typeLines() {
+    function typeLines(terminalLines: Array<{ prefix: string; text: string; color: string }>) {
       let lineIndex = 0;
       let charIndex = 0;
       let currentLines: BootLine[] = [];
 
       function tick() {
-        if (lineIndex >= TERMINAL_LINES.length) {
+        if (lineIndex >= terminalLines.length) {
           // All lines done, move to stats phase
           addTimeout(() => {
             setPhase("stats");
@@ -100,7 +138,7 @@ export function useBootSequence(): {
           return;
         }
 
-        const currentDef = TERMINAL_LINES[lineIndex];
+        const currentDef = terminalLines[lineIndex];
 
         if (charIndex === 0) {
           // Start a new line

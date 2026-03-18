@@ -19,7 +19,13 @@ export function ContentCard({ item, index, onPreview, onMove }: ContentCardProps
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onClick={() => onPreview(item)}
+      onClick={() => {
+        if (item.uri.startsWith("http")) {
+          window.open(item.uri, "_blank", "noopener");
+        } else {
+          onPreview(item);
+        }
+      }}
       style={{
         background: hovered ? colors.surfaceHover : "rgba(255,255,255,0.015)",
         border: `1px solid ${hovered ? meta.color + "55" : colors.border}`,
@@ -165,20 +171,37 @@ export function ContentCard({ item, index, onPreview, onMove }: ContentCardProps
                 borderTop: `1px solid ${colors.border}`,
               }}
             >
-              {item.source === "github" ? (
-                <CardAction
-                  label="OPEN ON GITHUB"
-                  color={meta.color}
-                  onClick={() => {
-                    window.open(item.uri, "_blank", "noopener");
+              {item.uri.startsWith("http") ? (
+                <a
+                  href={item.uri}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    fontSize: "9px",
+                    fontFamily: fonts.mono,
+                    letterSpacing: "0.08em",
+                    padding: "3px 10px",
+                    background: `${item.source === "discord" ? "#5865F2" : meta.color}12`,
+                    border: `1px solid ${item.source === "discord" ? "#5865F2" : meta.color}33`,
+                    borderRadius: "1px",
+                    color: item.source === "discord" ? "#5865F2" : meta.color,
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                    textDecoration: "none",
                   }}
-                />
+                >
+                  {item.source === "github" ? "OPEN ON GITHUB" : item.source === "discord" ? "OPEN IN DISCORD" : "OPEN LINK"}
+                </a>
               ) : (
                 <CardAction
                   label="OPEN"
                   color={colors.brand}
                   onClick={() => {
-                    api.openFile(item.uri).catch(() => {});
+                    console.log("[trove] Opening:", item.uri);
+                    api.openFile(item.uri)
+                      .then(() => console.log("[trove] Open OK"))
+                      .catch((e) => console.error("[trove] Open failed:", e));
                   }}
                 />
               )}

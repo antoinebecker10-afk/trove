@@ -11,9 +11,13 @@ export interface Store {
   upsertItems(items: ContentItem[]): Promise<void>;
   getAllItems(): Promise<ContentItem[]>;
   getItem(id: string): Promise<ContentItem | null>;
+  /** Get all item IDs for a given source, with their indexed metadata.modified */
+  getSourceIndex(source: string): Promise<Map<string, string | undefined>>;
   search(embedding: number[], limit: number): Promise<SearchResult[]>;
   getStats(): Promise<IndexStats>;
   clear(source?: string): Promise<void>;
+  /** Remove specific items by ID */
+  removeItems(ids: string[]): Promise<void>;
 }
 
 /**
@@ -153,6 +157,25 @@ export class JsonStore implements Store {
     };
   }
 
+  async getSourceIndex(source: string): Promise<Map<string, string | undefined>> {
+    await this.ensureLoaded();
+    const index = new Map<string, string | undefined>();
+    for (const [id, item] of this.items) {
+      if (item.source === source) {
+        index.set(id, item.metadata?.modified as string | undefined);
+      }
+    }
+    return index;
+  }
+
+  async removeItems(ids: string[]): Promise<void> {
+    await this.ensureLoaded();
+    for (const id of ids) {
+      this.items.delete(id);
+    }
+    if (ids.length > 0) await this.persist();
+  }
+
   async clear(source?: string): Promise<void> {
     await this.ensureLoaded();
     if (source) {
@@ -169,7 +192,10 @@ export class JsonStore implements Store {
 /**
  * Create the appropriate store based on config.
  */
-export function createStore(backend: "json" | "sqlite", dataDir: string): Store {
-  // SQLite support can be added later as an optional upgrade
+export async function createStore(backend: "json" | "sqlite", dataDir: string): Promise<Store> {
+  if (backend === "sqlite") {
+    const { SqliteStore } = await import("./sqlite-store.js");
+    return new SqliteStore(dataDir);
+  }
   return new JsonStore(dataDir);
 }

@@ -16,7 +16,7 @@ import type {
 // ---------------------------------------------------------------------------
 
 describe("DiscordConfigSchema", () => {
-  it("applies defaults for minimal config", () => {
+  it("applies defaults for minimal config", async () => {
     const result = DiscordConfigSchema.parse({});
     expect(result.token_env).toBe("DISCORD_TOKEN");
     expect(result.channel_types).toEqual(["text"]);
@@ -26,7 +26,7 @@ describe("DiscordConfigSchema", () => {
     expect(result.guild_ids).toBeUndefined();
   });
 
-  it("accepts full config", () => {
+  it("accepts full config", async () => {
     const result = DiscordConfigSchema.parse({
       token_env: "MY_DISCORD_TOKEN",
       guild_ids: ["111", "222"],
@@ -39,13 +39,13 @@ describe("DiscordConfigSchema", () => {
     expect(result.include_pins).toBe(false);
   });
 
-  it("rejects invalid channel type", () => {
+  it("rejects invalid channel type", async () => {
     expect(() =>
       DiscordConfigSchema.parse({ channel_types: ["voice"] }),
     ).toThrow();
   });
 
-  it("rejects messages_limit out of range", () => {
+  it("rejects messages_limit out of range", async () => {
     expect(() =>
       DiscordConfigSchema.parse({ messages_limit: 0 }),
     ).toThrow();
@@ -56,7 +56,7 @@ describe("DiscordConfigSchema", () => {
 });
 
 describe("parseRateLimitHeaders", () => {
-  it("extracts remaining and reset", () => {
+  it("extracts remaining and reset", async () => {
     const headers = new Headers({
       "X-RateLimit-Remaining": "3",
       "X-RateLimit-Reset": "1700000000",
@@ -66,7 +66,7 @@ describe("parseRateLimitHeaders", () => {
     expect(result.resetAt).toBe(1700000000000);
   });
 
-  it("returns undefined when headers are absent", () => {
+  it("returns undefined when headers are absent", async () => {
     const headers = new Headers({});
     const result = parseRateLimitHeaders(headers);
     expect(result.remaining).toBeUndefined();
@@ -75,16 +75,16 @@ describe("parseRateLimitHeaders", () => {
 });
 
 describe("getAllowedChannelTypes", () => {
-  it("maps text to type 0", () => {
+  it("maps text to type 0", async () => {
     expect(getAllowedChannelTypes(["text"])).toEqual(new Set([0]));
   });
 
-  it("maps multiple types", () => {
+  it("maps multiple types", async () => {
     const result = getAllowedChannelTypes(["text", "forum", "announcement"]);
     expect(result).toEqual(new Set([0, 15, 5]));
   });
 
-  it("ignores unknown types", () => {
+  it("ignores unknown types", async () => {
     expect(getAllowedChannelTypes(["unknown" as string])).toEqual(new Set());
   });
 });
@@ -101,31 +101,31 @@ describe("messageToContentItem", () => {
     pinned: false,
   };
 
-  it("builds correct id and uri", () => {
-    const item = messageToContentItem(baseMsg, "g1", "MyServer", "general", false);
+  it("builds correct id and uri", async () => {
+    const item = await messageToContentItem(baseMsg, "g1", "MyServer", "general", false);
     expect(item.id).toBe("discord:ch1:msg1");
     expect(item.uri).toBe("https://discord.com/channels/g1/ch1/msg1");
   });
 
-  it("uses first line as title", () => {
-    const item = messageToContentItem(baseMsg, "g1", "MyServer", "general", false);
+  it("uses first line as title", async () => {
+    const item = await messageToContentItem(baseMsg, "g1", "MyServer", "general", false);
     expect(item.title).toBe("Hello world");
   });
 
-  it("falls back to channel name when content is empty", () => {
+  it("falls back to channel name when content is empty", async () => {
     const emptyMsg = { ...baseMsg, content: "" };
-    const item = messageToContentItem(emptyMsg, "g1", "MyServer", "general", false);
+    const item = await messageToContentItem(emptyMsg, "g1", "MyServer", "general", false);
     expect(item.title).toBe("Message in #general");
   });
 
-  it("truncates description to 200 chars", () => {
+  it("truncates description to 200 chars", async () => {
     const longMsg = { ...baseMsg, content: "x".repeat(300) };
-    const item = messageToContentItem(longMsg, "g1", "MyServer", "general", false);
+    const item = await messageToContentItem(longMsg, "g1", "MyServer", "general", false);
     expect(item.description.length).toBe(200);
   });
 
-  it("includes tags: server, channel, author, reactions, pinned", () => {
-    const item = messageToContentItem(baseMsg, "g1", "MyServer", "general", true);
+  it("includes tags: server, channel, author, reactions, pinned", async () => {
+    const item = await messageToContentItem(baseMsg, "g1", "MyServer", "general", true);
     expect(item.tags).toContain("MyServer");
     expect(item.tags).toContain("#general");
     expect(item.tags).toContain("alice");
@@ -133,26 +133,26 @@ describe("messageToContentItem", () => {
     expect(item.tags).toContain("pinned");
   });
 
-  it("appends attachment URLs to content", () => {
+  it("appends attachment URLs to content", async () => {
     const msgWithAttach: DiscordMessage = {
       ...baseMsg,
       attachments: [
         { id: "a1", filename: "file.png", url: "https://cdn.discord.com/file.png" },
       ],
     };
-    const item = messageToContentItem(msgWithAttach, "g1", "MyServer", "general", false);
+    const item = await messageToContentItem(msgWithAttach, "g1", "MyServer", "general", false);
     expect(item.content).toContain("https://cdn.discord.com/file.png");
     expect((item.metadata as Record<string, unknown>).attachmentsCount).toBe(1);
   });
 
-  it("sets source and type correctly", () => {
-    const item = messageToContentItem(baseMsg, "g1", "MyServer", "general", false);
+  it("sets source and type correctly", async () => {
+    const item = await messageToContentItem(baseMsg, "g1", "MyServer", "general", false);
     expect(item.source).toBe("discord");
     expect(item.type).toBe("document");
   });
 
-  it("stores metadata fields", () => {
-    const item = messageToContentItem(baseMsg, "g1", "MyServer", "general", true);
+  it("stores metadata fields", async () => {
+    const item = await messageToContentItem(baseMsg, "g1", "MyServer", "general", true);
     const meta = item.metadata as Record<string, unknown>;
     expect(meta.author).toBe("alice");
     expect(meta.timestamp).toBe("2025-01-15T10:00:00.000Z");
@@ -166,7 +166,7 @@ describe("messageToContentItem", () => {
 // ---------------------------------------------------------------------------
 
 describe("connector.manifest", () => {
-  it("has correct name and version", () => {
+  it("has correct name and version", async () => {
     expect(connector.manifest.name).toBe("discord");
     expect(connector.manifest.version).toBe("0.1.0");
   });

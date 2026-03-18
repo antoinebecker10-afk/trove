@@ -235,22 +235,54 @@ async function fetchMessages(
 }
 
 // ---------------------------------------------------------------------------
+// URL metadata fetcher
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch og:title and og:description from a URL to enrich Discord link messages.
+ * Returns null on timeout or error — never blocks indexing.
+ */
+async function fetchUrlMeta(url: string): Promise<{ title?: string; description?: string } | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Trove/0.1.0 (link preview)" },
+      signal: controller.signal,
+      redirect: "follow",
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const html = await res.text();
+    // Extract og:title or <title>
+    const ogTitle = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i)?.[1]
+      ?? html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1];
+    // Extract og:description or meta description
+    const ogDesc = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i)?.[1]
+      ?? html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i)?.[1];
+    return { title: ogTitle?.trim(), description: ogDesc?.trim() };
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function messageToContentItem(
+async function messageToContentItem(
   msg: DiscordMessage,
   guildId: string,
   guildName: string,
   channelName: string,
   isPinned: boolean,
-): ContentItem {
+): Promise<ContentItem> {
   const firstLine = msg.content.split("\n")[0]?.trim();
-  const title = firstLine && firstLine.length > 0
+  let title = firstLine && firstLine.length > 0
     ? firstLine.slice(0, 100)
     : `Message in #${channelName}`;
 
-  const description = msg.content.slice(0, 200) || "(no text content)";
+  let description = msg.content.slice(0, 200) || "(no text content)";
 
   const tags: string[] = [guildName, `#${channelName}`, msg.author.username];
   if (msg.reactions) {
@@ -260,8 +292,45 @@ function messageToContentItem(
   }
   if (isPinned) tags.push("pinned");
 
+  // Extract URLs, fetch meta tags, and enrich content
+  const urlMatches = msg.content.match(/https?:\/\/[^\s)>]+/g) ?? [];
+  const linkPreviews: string[] = [];
+  for (const url of urlMatches) {
+    try {
+      const u = new URL(url);
+      tags.push(u.hostname.replace("www.", ""));
+      const segments = u.pathname.split("/").filter(s => s.length > 1 && s.length < 40);
+      tags.push(...segments);
+    } catch { /* invalid URL */ }
+    tags.push("link");
+
+    // Fetch page meta for enrichment
+    const meta = await fetchUrlMeta(url);
+    if (meta) {
+      if (meta.title) {
+        // Add title words as tags for searchability
+        const words = meta.title.toLowerCase().split(/[\s\-_/|:]+/).filter(w => w.length > 2);
+        tags.push(...words);
+        linkPreviews.push(`[${meta.title}](${url})`);
+        // Use page title as item title if message is just a URL
+        if (msg.content.trim() === url) {
+          title = meta.title.slice(0, 100);
+        }
+      }
+      if (meta.description) {
+        const descWords = meta.description.toLowerCase().split(/[\s\-_/|:]+/).filter(w => w.length > 2);
+        tags.push(...descWords.slice(0, 15));
+        linkPreviews.push(meta.description.slice(0, 200));
+        if (description === url || description === "(no text content)") {
+          description = meta.description.slice(0, 200);
+        }
+      }
+    }
+  }
+
   const attachmentUrls = msg.attachments.map((a) => a.url);
   const content = msg.content
+    + (linkPreviews.length > 0 ? "\n\n--- Link previews ---\n" + linkPreviews.join("\n") : "")
     + (attachmentUrls.length > 0 ? "\n\nAttachments:\n" + attachmentUrls.join("\n") : "");
 
   return {
@@ -369,40 +438,49 @@ const connector: Connector = {
       for (const channel of filteredChannels) {
         if (options.signal?.aborted) return;
 
-        // Fetch pinned message IDs if configured
-        let pinnedIds = new Set<string>();
-        if (parsed.include_pins) {
-          pinnedIds = await fetchPinnedMessages(
+        try {
+          // Fetch pinned message IDs if configured
+          let pinnedIds = new Set<string>();
+          if (parsed.include_pins) {
+            pinnedIds = await fetchPinnedMessages(
+              channel.id,
+              token,
+              options.signal,
+            );
+          }
+
+          // Fetch messages
+          const messages = await fetchMessages(
             channel.id,
             token,
+            parsed.messages_limit,
+            sinceDate,
             options.signal,
           );
-        }
 
-        // Fetch messages
-        const messages = await fetchMessages(
-          channel.id,
-          token,
-          parsed.messages_limit,
-          sinceDate,
-          options.signal,
-        );
+          for (const msg of messages) {
+            // Skip bot messages
+            if (msg.author.bot) continue;
 
-        for (const msg of messages) {
-          // Skip bot messages
-          if (msg.author.bot) continue;
+            const item = await messageToContentItem(
+              msg,
+              guild.id,
+              guild.name,
+              channel.name,
+              pinnedIds.has(msg.id),
+            );
 
-          const item = messageToContentItem(
-            msg,
-            guild.id,
-            guild.name,
-            channel.name,
-            pinnedIds.has(msg.id),
-          );
-
-          indexed++;
-          options.onProgress?.(indexed);
-          yield item;
+            indexed++;
+            options.onProgress?.(indexed);
+            yield item;
+          }
+        } catch (err) {
+          // Skip channels the bot cannot access (403 Forbidden, 50001 Missing Access)
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes("403") || msg.includes("50001")) {
+            continue;
+          }
+          throw err;
         }
       }
     }

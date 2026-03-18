@@ -15,7 +15,13 @@ export const TroveConfigSchema = z.object({
   /** Directory for index data */
   data_dir: z.string().default("~/.trove"),
   /** Embedding provider */
-  embeddings: z.enum(["anthropic", "local"]).default("local"),
+  embeddings: z.enum(["anthropic", "ollama", "transformers", "local"]).default("local"),
+  /** Ollama embedding model (default: nomic-embed-text) */
+  ollama_model: z.string().optional(),
+  /** Ollama AI/chat model for dashboard answers (default: qwen3:8b) */
+  ollama_ai_model: z.string().optional(),
+  /** Ollama base URL (default: http://localhost:11434) */
+  ollama_url: z.string().url().optional(),
   /** Content sources */
   sources: z.array(SourceConfigSchema).default([]),
 });

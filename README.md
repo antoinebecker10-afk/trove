@@ -45,18 +45,24 @@ No cloud. No subscriptions. Your data stays on your machine.
 
 **Search everything from one place**
 - Semantic search — find by meaning, not just keywords
-- Keyword fallback — always finds something
-- AI-powered answers via local Ollama
+- Keyword fallback with smart AND/OR matching — always finds something
+- AI-powered answers via local Ollama (Mistral for RAG, Qwen3 for chat)
 
 **14 connectors, plug and play**
-- Connect Notion, GitHub, Slack, Figma, and 10 more with a setup wizard in the dashboard
+- Connect Notion, GitHub, Slack, Figma, Discord, and 8 more with a setup wizard
 - Each connector is ~100-200 lines of TypeScript. Easy to build, easy to contribute.
+
+**Incremental indexing + live watch**
+- Only re-indexes changed files — skips unchanged content based on modification timestamps
+- `trove watch` monitors your local sources in real-time and auto-reindexes on changes
+- SSE streaming progress in the web dashboard
 
 **Web dashboard**
 - Dual-pane file manager with drag & drop
 - Masonry launcher with thumbnails
 - Semantic search with AI answers
 - Sources panel to connect/disconnect services in 1 click
+- Real-time indexing progress with SSE streaming
 - System monitor (RAM, disk, CPU)
 - Keyboard shortcuts, context menus, preview modals
 
@@ -64,10 +70,14 @@ No cloud. No subscriptions. Your data stays on your machine.
 - 7 tools: find, open, locate, search, list-sources, get-content, reindex
 - Ask Claude "find my terrain screenshots" directly from your IDE
 
-**Local-first, zero cloud**
-- Everything runs on your machine
-- JSON index at `~/.trove/`
-- Local TF-IDF embeddings (zero API calls) or Anthropic embeddings (optional)
+**Local AI stack — no cloud required**
+- **Embeddings**: Ollama (`nomic-embed-text`), Transformers.js (`all-MiniLM-L6-v2`), local TF-IDF, or Anthropic (optional)
+- **RAG answers**: Mistral via Ollama — answers grounded in your search results, no hallucination
+- **Chat**: Qwen3 via Ollama — multi-turn interactive conversations about your content
+- **OCR**: Tesseract.js extracts text from screenshots and images
+- **Storage**: JSON or SQLite (with optional `sqlite-vec` vector search) + AES-256-GCM encryption
+- Auto-fallback: Ollama unavailable → Transformers.js → local TF-IDF. Always works.
+- Everything runs on your machine, zero API keys needed
 
 **Security-first architecture**
 - Sensitive files auto-blocked from indexing (`.env`, private keys, wallets, credentials — 40+ patterns)
@@ -84,22 +94,24 @@ No cloud. No subscriptions. Your data stays on your machine.
 ## Quick Start
 
 ```bash
-# Install and initialize
-npx trove-os init
+# Interactive setup wizard — connects your sources, installs local AI, runs first index
+npx trove-os setup
+```
 
-# Edit .trove.yml to configure your sources
-# Edit .env to add API tokens
+That's it. The wizard walks you through everything:
+1. Select sources (Local Files, GitHub, Notion, Discord, Slack, Figma, etc.)
+2. Enter API tokens (auto-detects GitHub CLI)
+3. Install local AI models via Ollama (no cloud API needed)
+4. Generate `.trove.yml` + `.env`
+5. Run your first index
 
-# Index your content
-npx trove-os index
+Or if you prefer manual setup:
 
-# Search
-npx trove-os search "react component for auth"
-
-# Launch the dashboard
-cd trove && npx tsx packages/web/server.ts &
-cd packages/web && npx vite
-# Open http://localhost:7332
+```bash
+npx trove-os init            # Scaffold config files
+# Edit .trove.yml + .env
+npx trove-os index            # Index your content
+npx trove-os search "query"   # Search
 ```
 
 ## Use with Claude Code (MCP)
@@ -171,9 +183,9 @@ Connect and disconnect services from the dashboard. Setup wizards for each conne
 `.trove.yml` — sources and settings:
 
 ```yaml
-storage: json
+storage: sqlite      # or "json" (legacy)
 data_dir: ~/.trove
-embeddings: local    # or "anthropic"
+embeddings: ollama   # "ollama" (recommended), "transformers" (local), "local" (TF-IDF), "anthropic" (cloud)
 
 sources:
   - connector: local
@@ -200,19 +212,41 @@ sources:
       since_days: 30
 ```
 
-API tokens go in `.env` (never in config):
+API tokens go in `.env` (never in config, never committed — `.env` is gitignored):
 ```bash
-GITHUB_TOKEN=ghp_...
-NOTION_TOKEN=secret_...
-FIGMA_TOKEN=figd_...
-SLACK_TOKEN=xoxb-...
-LINEAR_TOKEN=lin_api_...
-DISCORD_TOKEN=...
-AIRTABLE_TOKEN=pat...
-DROPBOX_TOKEN=...
-CONFLUENCE_TOKEN=...
+# Required for semantic search (optional: local TF-IDF works without it)
+ANTHROPIC_API_KEY=sk-ant-...          # https://console.anthropic.com/settings/keys
+
+# Connectors — add only the ones you use
+GITHUB_TOKEN=ghp_...                  # https://github.com/settings/tokens
+NOTION_TOKEN=secret_...               # https://www.notion.so/my-integrations
+FIGMA_TOKEN=figd_...                  # https://www.figma.com/developers/api#access-tokens
+SLACK_TOKEN=xoxb-...                  # https://api.slack.com/apps → OAuth & Permissions
+LINEAR_TOKEN=lin_api_...              # https://linear.app/settings/api
+DISCORD_TOKEN=...                     # https://discord.com/developers/applications
+AIRTABLE_TOKEN=pat...                 # https://airtable.com/create/tokens
+DROPBOX_TOKEN=...                     # https://www.dropbox.com/developers/apps
+CONFLUENCE_TOKEN=...                  # https://id.atlassian.com/manage-profile/security/api-tokens
 CONFLUENCE_EMAIL=you@company.com
-RAINDROP_TOKEN=...
+RAINDROP_TOKEN=...                    # https://app.raindrop.io/settings/integrations
+```
+
+> **Tip:** After cloning, copy `.env.example` to `.env` and fill in your tokens. The `.env` file is gitignored and will never be committed.
+
+### Ollama Embeddings (recommended — free, local, no API key)
+
+```bash
+# 1. Install Ollama: https://ollama.com
+# 2. Pull an embedding model
+ollama pull nomic-embed-text
+
+# 3. Set in .trove.yml
+embeddings: ollama
+
+# Optional .env overrides (defaults shown)
+OLLAMA_URL=http://localhost:11434
+OLLAMA_EMBED_MODEL=nomic-embed-text
+OLLAMA_EMBED_DIMENSIONS=768
 ```
 
 ### Security Options
@@ -230,11 +264,15 @@ TROVE_API_TOKEN=your-dashboard-token
 ## CLI Commands
 
 ```bash
-trove-os init             # Initialize config
-trove-os index [source]   # Index all or specific source
-trove-os search <query>   # Semantic search from terminal
-trove-os status           # Show index statistics
-trove-os mcp              # Start MCP server (stdio)
+trove-os setup              # Interactive setup wizard (recommended for first use)
+trove-os init               # Scaffold config files (non-interactive)
+trove-os index [source]     # Index all or specific source
+trove-os search <query>     # Semantic search from terminal
+trove-os ask <question>     # AI-powered file finder (Ollama or Claude)
+trove-os chat               # Interactive AI session
+trove-os status             # Show index statistics
+trove-os watch              # Live re-index on file changes
+trove-os mcp                # Start MCP server (stdio)
 ```
 
 ---
@@ -309,7 +347,7 @@ TypeScript monorepo (pnpm + Turborepo), 18 packages:
 | Package | Description |
 |---------|-------------|
 | `trove-os` | CLI (`npx trove-os`) |
-| `@trove/core` | Engine, indexer, JSON store, embeddings, secret redaction, encryption |
+| `@trove/core` | Engine, indexer, JSON/SQLite store, embeddings (4 providers), watcher, secret redaction, encryption |
 | `@trove/shared` | Types, Zod schemas, interfaces |
 | `@trove/mcp` | MCP server (7 tools for Claude Code) |
 | `@trove/web` | Web dashboard (React) + API server |

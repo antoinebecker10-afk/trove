@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { execFile } from "node:child_process";
+import { execFile, exec } from "node:child_process";
 import { readFile, readdir, stat, copyFile, unlink, mkdir, rename } from "node:fs/promises";
 import { join, extname, dirname, basename } from "node:path";
 import { homedir } from "node:os";
@@ -75,7 +75,13 @@ export async function handleFileRoutes(
   // POST /api/file/open — open file with OS default app
   if (url.startsWith("/api/file/open") && method === "POST") {
     const body = await readBody(req);
-    const parsed = JSON.parse(body);
+    console.error("[trove-api] file/open raw body:", body.slice(0, 300));
+    let parsed: Record<string, unknown>;
+    try { parsed = JSON.parse(body); } catch (e) {
+      console.error("[trove-api] file/open JSON parse error:", e instanceof Error ? e.message : e);
+      error(res, "Invalid JSON", 400);
+      return true;
+    }
     const filePath = parsed.path;
     if (!filePath || typeof filePath !== "string") {
       error(res, "Missing path", 400);
@@ -86,18 +92,21 @@ export async function handleFileRoutes(
       error(res, "Path not allowed", 403);
       return true;
     }
-    const [cmd, args] = process.platform === "win32"
-      ? ["cmd", ["/c", "start", "", safe]]
-      : process.platform === "darwin"
+    if (process.platform === "win32") {
+      // Windows: use exec with shell for proper quoting
+      exec(`start "" "${safe.replace(/"/g, "")}"`, (err) => {
+        if (err) error(res, "Failed to open file");
+        else json(res, { ok: true });
+      });
+    } else {
+      const [cmd, args] = process.platform === "darwin"
         ? ["open", [safe]]
         : ["xdg-open", [safe]];
-    execFile(cmd, args, (err) => {
-      if (err) {
-        error(res, "Failed to open file");
-      } else {
-        json(res, { ok: true });
-      }
-    });
+      execFile(cmd, args, (err) => {
+        if (err) error(res, "Failed to open file");
+        else json(res, { ok: true });
+      });
+    }
     return true;
   }
 
@@ -151,7 +160,8 @@ export async function handleFileRoutes(
   // POST /api/file/move — move/rename a file
   if (url.startsWith("/api/file/move") && method === "POST") {
     const body = await readBody(req);
-    const parsed = JSON.parse(body);
+    let parsed: Record<string, unknown>;
+    try { parsed = JSON.parse(body); } catch { error(res, "Invalid JSON", 400); return true; }
     const { from, to } = parsed as { from?: string; to?: string };
     if (!from || !to) {
       error(res, "Missing from/to", 400);
@@ -187,7 +197,8 @@ export async function handleFileRoutes(
   // POST /api/file/copy
   if (url.startsWith("/api/file/copy") && method === "POST") {
     const body = await readBody(req);
-    const parsed = JSON.parse(body);
+    let parsed: Record<string, unknown>;
+    try { parsed = JSON.parse(body); } catch { error(res, "Invalid JSON", 400); return true; }
     const { from, to } = parsed as { from?: string; to?: string };
     if (!from || !to) {
       error(res, "Missing from/to", 400);
@@ -222,7 +233,8 @@ export async function handleFileRoutes(
   // POST /api/file/rename
   if (url.startsWith("/api/file/rename") && method === "POST") {
     const body = await readBody(req);
-    const parsed = JSON.parse(body);
+    let parsed: Record<string, unknown>;
+    try { parsed = JSON.parse(body); } catch { error(res, "Invalid JSON", 400); return true; }
     const { path: filePath, newName } = parsed as { path?: string; newName?: string };
     if (!filePath || !newName) {
       error(res, "Missing path/newName", 400);
@@ -272,7 +284,8 @@ export async function handleFileRoutes(
   // POST /api/file/mkdir
   if (url.startsWith("/api/file/mkdir") && method === "POST") {
     const body = await readBody(req);
-    const parsed = JSON.parse(body);
+    let parsed: Record<string, unknown>;
+    try { parsed = JSON.parse(body); } catch { error(res, "Invalid JSON", 400); return true; }
     const dirPath = parsed.path;
     if (!dirPath || typeof dirPath !== "string") {
       error(res, "Missing path", 400);

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RateLimiter } from "@trove/shared";
 import type { Connector, ContentItem, IndexOptions } from "@trove/shared";
 
 const RaindropConfigSchema = z.object({
@@ -41,6 +42,8 @@ interface RaindropCollectionsResponse {
   items: RaindropCollection[];
 }
 
+const limiter = new RateLimiter(5);
+
 /**
  * Fetch all bookmarks from a collection (or all, collectionId=0).
  */
@@ -56,6 +59,7 @@ async function fetchBookmarks(
     if (signal?.aborted) break;
 
     const url = `${API_BASE}/raindrops/${collectionId}?perpage=${PER_PAGE}&page=${page}`;
+    await limiter.wait();
     const response = await fetch(url, { headers, signal });
 
     if (!response.ok) {
@@ -84,6 +88,7 @@ async function fetchCollections(
   const map = new Map<number, string>();
 
   try {
+    await limiter.wait();
     const response = await fetch(`${API_BASE}/collections`, { headers, signal });
     if (!response.ok) return map;
 

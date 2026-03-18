@@ -205,6 +205,42 @@ export function BootSequence({ onComplete }: { onComplete: () => void }) {
         )}
       </div>
 
+      {/* Progress bar */}
+      {showTerminal && (
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "480px",
+            padding: "0 40px",
+            marginTop: "16px",
+            opacity: terminalOpacity,
+            transition: "opacity 400ms ease",
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              height: "2px",
+              background: "rgba(255,255,255,0.06)",
+              borderRadius: "1px",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                height: "100%",
+                background: `linear-gradient(90deg, ${colors.brand}, ${colors.cyan})`,
+                borderRadius: "1px",
+                width: phase === "done" || phase === "fade-out" ? "100%" :
+                       phase === "stats" ? "90%" :
+                       phase === "terminal" ? `${Math.min(80, lines.length * 16)}%` : "5%",
+                transition: "width 400ms ease-out",
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Bottom gradient line */}
       <div
         style={{

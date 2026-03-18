@@ -43,8 +43,11 @@ export class TroveEngine {
     const dataDir = resolveDataDir(config);
     await mkdir(dataDir, { recursive: true });
 
-    const store = createStore(config.storage, dataDir);
-    const embeddings = createEmbeddingProvider(config.embeddings);
+    const store = await createStore(config.storage, dataDir);
+    const embeddings = createEmbeddingProvider(config.embeddings, {
+      url: config.ollama_url,
+      model: config.ollama_model,
+    });
 
     const engine = new TroveEngine(config, store, embeddings);
     engine.initialized = true;
@@ -84,8 +87,9 @@ export class TroveEngine {
         );
       }
 
-      // Clear old items from this source before re-indexing
-      await this.store.clear(source.connector);
+      // Incremental indexing: load existing items to skip unchanged files
+      const existingIndex = await this.store.getSourceIndex(source.connector);
+      const seenIds = new Set<string>();
 
       const batch: ContentItem[] = [];
       const BATCH_SIZE = 50;
@@ -93,6 +97,17 @@ export class TroveEngine {
       for await (const item of connector.index(source.config, {
         signal: options?.signal,
       })) {
+        seenIds.add(item.id);
+
+        // Skip if item exists with same modification date (incremental)
+        const existingModified = existingIndex.get(item.id);
+        const itemModified = item.metadata?.modified as string | undefined;
+        if (existingModified && itemModified && existingModified === itemModified) {
+          totalIndexed++;
+          options?.onProgress?.(totalIndexed);
+          continue; // unchanged — skip embedding + storage
+        }
+
         batch.push(item);
 
         if (batch.length >= BATCH_SIZE) {
@@ -108,6 +123,12 @@ export class TroveEngine {
         await this.embedAndStore(batch);
         totalIndexed += batch.length;
         options?.onProgress?.(totalIndexed);
+      }
+
+      // Remove items that no longer exist in the source (deleted files)
+      const removedIds = [...existingIndex.keys()].filter(id => !seenIds.has(id));
+      if (removedIds.length > 0) {
+        await this.store.removeItems(removedIds);
       }
     }
 
@@ -163,11 +184,28 @@ export class TroveEngine {
       items = items.filter((i) => i.source === options.source);
     }
 
-    return items.filter((item) => {
+    // Score items: AND match first, then OR fallback
+    const andMatches = items.filter((item) => {
       const haystack =
-        `${item.title} ${item.description} ${item.tags.join(" ")} ${item.content ?? ""}`.toLowerCase();
+        `${item.title} ${item.description} ${item.tags.join(" ")} ${item.uri} ${item.content ?? ""}`.toLowerCase();
       return terms.every((term) => haystack.includes(term));
     });
+
+    if (andMatches.length > 0) return andMatches;
+
+    // Fallback: OR matching, sorted by number of matching terms (best first)
+    const orMatches = items
+      .map((item) => {
+        const haystack =
+          `${item.title} ${item.description} ${item.tags.join(" ")} ${item.uri} ${item.content ?? ""}`.toLowerCase();
+        const matchCount = terms.filter((term) => haystack.includes(term)).length;
+        return { item, matchCount };
+      })
+      .filter(({ matchCount }) => matchCount > 0)
+      .sort((a, b) => b.matchCount - a.matchCount)
+      .map(({ item }) => item);
+
+    return orMatches;
   }
 
   /**
@@ -225,20 +263,27 @@ export class TroveEngine {
       console.error(`[trove] Redacted ${totalRedacted} secret(s) from indexed content`);
     }
 
-    // Only embed metadata (title, description, tags) — NEVER send file content
-    // to external APIs. Content may contain credentials, keys, or sensitive data.
-    const textsToEmbed = items.map(
-      (item) =>
-        `${item.title} ${item.description} ${item.tags.join(" ")}`,
-    );
+    // Embed metadata (title, description, tags, path segments) — NEVER send
+    // file content to external APIs. Content may contain credentials or keys.
+    // URI path segments are included for better discoverability (folder names).
+    const textsToEmbed = items.map((item) => {
+      // Extract meaningful path segments (last 4 dirs + filename) from URI
+      const pathSegments = item.uri
+        .split(/[/\\]/)
+        .filter((s) => s.length > 0)
+        .slice(-5)
+        .join(" ");
+      return `${item.title} ${item.description} ${item.tags.join(" ")} ${pathSegments}`;
+    });
 
     try {
       const embeddings = await this.embeddings.embed(textsToEmbed);
       for (let i = 0; i < items.length; i++) {
         items[i].embedding = embeddings[i];
       }
-    } catch {
-      // If embedding fails, store items without embeddings (keyword search still works)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[trove] Embedding failed (keyword search still works): ${msg}`);
     }
 
     await this.store.upsertItems(items);

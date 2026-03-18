@@ -1,7 +1,7 @@
 # Trove configuration — copy to .trove.yml and customize
-storage: json
+storage: sqlite      # or "json" (legacy, slower for large indexes)
 data_dir: ~/.trove
-embeddings: local    # or "anthropic" (requires ANTHROPIC_API_KEY)
+embeddings: ollama   # recommended (free, local) — or "transformers", "local" (TF-IDF), "anthropic" (cloud)
 
 sources:
   - connector: local

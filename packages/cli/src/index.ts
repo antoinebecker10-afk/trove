@@ -16,6 +16,46 @@ registerBuiltinConnector("notion", async () => {
   const mod = await import("@trove/connector-notion");
   return mod.default;
 });
+registerBuiltinConnector("discord", async () => {
+  const mod = await import("@trove/connector-discord");
+  return mod.default;
+});
+registerBuiltinConnector("obsidian", async () => {
+  const mod = await import("@trove/connector-obsidian");
+  return mod.default;
+});
+registerBuiltinConnector("figma", async () => {
+  const mod = await import("@trove/connector-figma");
+  return mod.default;
+});
+registerBuiltinConnector("slack", async () => {
+  const mod = await import("@trove/connector-slack");
+  return mod.default;
+});
+registerBuiltinConnector("linear", async () => {
+  const mod = await import("@trove/connector-linear");
+  return mod.default;
+});
+registerBuiltinConnector("airtable", async () => {
+  const mod = await import("@trove/connector-airtable");
+  return mod.default;
+});
+registerBuiltinConnector("dropbox", async () => {
+  const mod = await import("@trove/connector-dropbox");
+  return mod.default;
+});
+registerBuiltinConnector("confluence", async () => {
+  const mod = await import("@trove/connector-confluence");
+  return mod.default;
+});
+registerBuiltinConnector("raindrop", async () => {
+  const mod = await import("@trove/connector-raindrop");
+  return mod.default;
+});
+registerBuiltinConnector("google-drive", async () => {
+  const mod = await import("@trove/connector-google-drive");
+  return mod.default;
+});
 
 // Load .env file if present (dotenv-free: use Node 20+ built-in)
 try {
@@ -41,6 +81,14 @@ program
   .action(async (opts) => {
     const { initCommand } = await import("./commands/init.js");
     await initCommand(opts);
+  });
+
+program
+  .command("setup")
+  .description("Interactive setup wizard — connect sources, install AI models, first index")
+  .action(async () => {
+    const { setupCommand } = await import("./commands/setup.js");
+    await setupCommand();
   });
 
 program
@@ -95,6 +143,15 @@ program
   .action(async (opts) => {
     const { chatCommand } = await import("./commands/ask.js");
     await chatCommand(opts);
+  });
+
+program
+  .command("watch")
+  .description("Watch local sources and re-index on changes (live mode)")
+  .option("-v, --verbose", "Show individual file changes")
+  .action(async (opts) => {
+    const { watchCommand } = await import("./commands/watch.js");
+    await watchCommand(opts);
   });
 
 program.parse();

@@ -228,13 +228,21 @@ export const SOURCE_META: Record<
 > = {
   local: { icon: "🏠", color: colors.green, label: "Local" },
   github: { icon: "🐙", color: colors.brand, label: "GitHub" },
+  discord: { icon: "💬", color: "#5865F2", label: "Discord" },
   notion: { icon: "📓", color: "#e0e0e0", label: "Notion" },
   obsidian: { icon: "💎", color: colors.purple, label: "Obsidian" },
-  slack: { icon: "💬", color: "#e01e5a", label: "Slack" },
+  slack: { icon: "🗨️", color: "#e01e5a", label: "Slack" },
   figma: { icon: "🎨", color: "#a259ff", label: "Figma" },
+  linear: { icon: "◆", color: "#5E6AD2", label: "Linear" },
+  airtable: { icon: "📊", color: "#18BFFF", label: "Airtable" },
+  dropbox: { icon: "📦", color: "#0061FF", label: "Dropbox" },
+  confluence: { icon: "📘", color: "#1868DB", label: "Confluence" },
+  raindrop: { icon: "🔖", color: "#5CB0FF", label: "Raindrop" },
+  "google-drive": { icon: "📁", color: "#4285F4", label: "Google Drive" },
 };
 
-export const SOURCES = ["All", "Local", "GitHub", "Notion", "Obsidian", "Slack", "Figma"];
+/** Static fallback — will be overridden by dynamic sources from API */
+export const SOURCES = ["All", "Local", "GitHub", "Discord", "Notion", "Obsidian", "Slack", "Figma"];
 
 /* ------------------------------------------------------------------ */
 /*  Breakpoints (px)                                                   */

@@ -19,3 +19,5 @@ export {
   type SearchResult,
   type IndexStats,
 } from "./search.js";
+
+export { RateLimiter } from "./rate-limiter.js";

@@ -68,7 +68,7 @@ async function callAnthropic(
 async function callOllama(opts: LLMOptions): Promise<string> {
   const ollamaUrl =
     process.env.OLLAMA_URL ?? "http://localhost:11434";
-  const ollamaModel = process.env.OLLAMA_MODEL ?? "llama3.2";
+  const ollamaModel = process.env.OLLAMA_RAG_MODEL ?? process.env.OLLAMA_MODEL ?? "mistral:latest";
 
   const messages = [
     { role: "system", content: opts.system },

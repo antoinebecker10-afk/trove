@@ -1,13 +1,16 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { colors, fonts } from "../lib/theme";
-import { api, type ConnectorInfo } from "../lib/api";
+import { api, getApiToken, type ConnectorInfo } from "../lib/api";
 
 export function SourcesView() {
   const [connectors, setConnectors] = useState<ConnectorInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [setupId, setSetupId] = useState<string | null>(null);
   const [indexingId, setIndexingId] = useState<string | null>(null);
+  const [indexProgress, setIndexProgress] = useState<number>(0);
+  const [indexLogs, setIndexLogs] = useState<string[]>([]);
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -26,12 +29,84 @@ export function SourcesView() {
 
   const handleIndex = async (id: string) => {
     setIndexingId(id);
+    setIndexProgress(0);
+    setIndexLogs([`► Indexing ${id}...`]);
+
+    let finalCount = 0;
+
     try {
-      const result = await api.indexConnector(id);
-      showMessage(`Indexed ${result.count} items from ${id}`, "success");
+      const token = getApiToken();
+      const resp = await fetch("/api/connectors/index", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ connectorId: id, stream: true }),
+      });
+
+      if (!resp.ok) {
+        const errBody = await resp.text().catch(() => "");
+        throw new Error(`HTTP ${resp.status}: ${errBody || resp.statusText}`);
+      }
+      if (!resp.body) {
+        // Fallback: non-streaming, read full response
+        setIndexLogs((prev) => [...prev, "[trove] Streaming not supported, using fallback..."]);
+        const text = await resp.text();
+        const events = text.split("\n").filter((l) => l.startsWith("data: "));
+        for (const line of events) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.count != null) finalCount = data.count;
+            if (data.message) setIndexLogs((prev) => [...prev.slice(-50), data.message]);
+          } catch { /* skip */ }
+        }
+        setIndexProgress(finalCount);
+        setIndexLogs((prev) => [...prev, `✓ Done — ${finalCount} items indexed`]);
+        showMessage(`Indexed ${finalCount} items from ${id}`, "success");
+        load();
+        return;
+      }
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (line.startsWith("event: ")) continue;
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.count != null) {
+                finalCount = data.count;
+                setIndexProgress(data.count);
+              }
+              if (data.message) {
+                setIndexLogs((prev) => [...prev.slice(-50), data.message]);
+              }
+              if (data.error) throw new Error(data.error);
+            } catch (e) {
+              if (e instanceof Error && e.message !== "Index failed") throw e;
+            }
+          }
+        }
+      }
+
+      setIndexLogs((prev) => [...prev, `✓ Done — ${finalCount} items indexed`]);
+      showMessage(`Indexed ${finalCount} items from ${id}`, "success");
       load();
     } catch (err) {
-      showMessage(err instanceof Error ? err.message : "Index failed", "error");
+      const msg = err instanceof Error ? err.message : "Index failed";
+      setIndexLogs((prev) => [...prev, `✗ Error: ${msg}`]);
+      showMessage(msg, "error");
     }
     setIndexingId(null);
   };
@@ -116,6 +191,9 @@ export function SourcesView() {
                     onIndex={() => handleIndex(c.id)}
                     onDisconnect={() => handleDisconnect(c.id)}
                     indexing={indexingId === c.id}
+                    progress={indexingId === c.id ? indexProgress : 0}
+                    logs={indexingId === c.id || indexLogs.length > 0 ? indexLogs : []}
+                    showLogs={indexingId === c.id || (indexLogs.length > 0 && c.id === connectors.find((x) => indexLogs[0]?.includes(x.id))?.id)}
                   />
                 ))}
               </div>
@@ -210,12 +288,16 @@ function Section({ title, count, children }: { title: string; count: number; chi
 // Connected card — large, detailed
 // ---------------------------------------------------------------------------
 
-function ConnectedCard({ connector: c, onIndex, onDisconnect, indexing }: {
+function ConnectedCard({ connector: c, onIndex, onDisconnect, indexing, progress, logs, showLogs }: {
   connector: ConnectorInfo;
   onIndex: () => void;
   onDisconnect: () => void;
   indexing: boolean;
+  progress: number;
+  logs?: string[];
+  showLogs?: boolean;
 }) {
+  const logEndRef = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -280,6 +362,66 @@ function ConnectedCard({ connector: c, onIndex, onDisconnect, indexing }: {
         )}
       </div>
 
+      {/* Progress bar during indexing */}
+      {indexing && (
+        <div style={{ marginBottom: "10px" }}>
+          <div style={{
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            marginBottom: "4px",
+          }}>
+            <span style={{ fontSize: "10px", fontFamily: fonts.mono, color: colors.brand }}>
+              Indexing...
+            </span>
+            <span style={{ fontSize: "10px", fontFamily: fonts.mono, color: colors.textMuted }}>
+              {progress.toLocaleString()} items
+            </span>
+          </div>
+          <div style={{
+            width: "100%", height: "3px", background: "rgba(255,255,255,0.06)",
+            borderRadius: "2px", overflow: "hidden",
+          }}>
+            <div style={{
+              height: "100%",
+              background: `linear-gradient(90deg, ${colors.brand}, ${colors.cyan})`,
+              borderRadius: "2px",
+              width: progress > 0 ? "100%" : "30%",
+              animation: progress > 0 ? "none" : "indeterminate 1.5s ease-in-out infinite",
+              transition: "width 0.3s ease",
+            }} />
+          </div>
+          <style>{`
+            @keyframes indeterminate {
+              0% { transform: translateX(-100%); }
+              100% { transform: translateX(400%); }
+            }
+          `}</style>
+        </div>
+      )}
+
+      {/* Log panel */}
+      {showLogs && logs && logs.length > 0 && (
+        <div style={{
+          marginBottom: "10px", padding: "10px 12px",
+          background: "#050505", border: `1px solid ${colors.border}`,
+          borderRadius: "6px", maxHeight: "150px", overflowY: "auto",
+          fontFamily: fonts.mono, fontSize: "10px", lineHeight: "1.6",
+        }}>
+          {logs.map((line, i) => (
+            <div key={i} style={{
+              color: line.startsWith("✓") ? colors.green
+                : line.startsWith("✗") ? "#f87171"
+                : line.startsWith("►") ? colors.brand
+                : line.includes("Redacted") ? "#fbbf24"
+                : colors.textDim,
+              whiteSpace: "pre-wrap", wordBreak: "break-all",
+            }}>
+              {line}
+            </div>
+          ))}
+          <div ref={logEndRef} />
+        </div>
+      )}
+
       {/* Actions */}
       <div style={{ display: "flex", gap: "8px" }}>
         <button
@@ -294,7 +436,7 @@ function ConnectedCard({ connector: c, onIndex, onDisconnect, indexing }: {
             cursor: indexing ? "wait" : "pointer", transition: "all 0.15s",
           }}
         >
-          {indexing ? "Indexing..." : "Re-index"}
+          {indexing ? `${progress.toLocaleString()} items...` : "Re-index"}
         </button>
         {hovered && (
           <button

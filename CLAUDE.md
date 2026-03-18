@@ -17,12 +17,18 @@ TypeScript monorepo (pnpm workspaces + Turborepo):
 ```
 packages/
   shared/           @trove/shared     — Types, Zod schemas (ContentItem, Connector, Config)
-  core/             @trove/core       — Engine, JSON store, embeddings (local TF-IDF + Anthropic), plugin loader
+  core/             @trove/core       — Engine, JSON/SQLite store, embeddings (Ollama, Transformers.js, TF-IDF, Anthropic), watcher, plugin loader
   connectors/
-    local/          @trove/connector-local   — Filesystem indexer (path traversal protection, symlink check)
-    github/         @trove/connector-github  — GitHub repos + README via API (pagination, rate limits)
+    local/          @trove/connector-local    — Filesystem indexer (path traversal protection, symlink check)
+    github/         @trove/connector-github   — GitHub repos + README via API (pagination, rate limits)
+    notion/         @trove/connector-notion   — Pages + databases, blocks→Markdown, workspace search
+    discord/        @trove/connector-discord  — Messages, pins, URL metadata enrichment
+    obsidian/       @trove/connector-obsidian — Vault notes, frontmatter, wiki-links, #tags
+    figma/          @trove/connector-figma    — Files, components, pages
+    slack/          @trove/connector-slack    — Messages, bookmarks, starred items
+    +6 more         (linear, airtable, dropbox, confluence, raindrop, google-drive)
   mcp/              @trove/mcp        — MCP server, 7 tools for Claude Code
-  cli/              trove-os (npm)    — CLI: init, index, search, status, mcp
+  cli/              trove-os (npm)    — CLI: setup, init, index, search, ask, chat, watch, status, mcp
   web/              @trove/web        — React dashboard, cyberpunk terminal UI
 ```
 
@@ -31,8 +37,10 @@ packages/
 - **Connector**: a plugin that implements the `Connector` interface from `@trove/shared`. Each source (GitHub, local FS, Notion, etc.) is a connector. Connectors yield `ContentItem` objects via an AsyncGenerator.
 - **ContentItem**: the universal unit — has id, source, type, title, description, tags, uri (real path/URL), metadata, optional content text, optional embedding vector.
 - **TroveEngine** (`@trove/core`): orchestrator. Loads config, loads connectors, indexes sources, runs search (semantic + keyword fallback).
-- **Store**: JSON file-based index at `~/.trove/index.json`. Supports cosine similarity search over embeddings.
-- **Embeddings**: `LocalEmbeddingProvider` (TF-IDF hash vectors, zero API) or `AnthropicEmbeddingProvider` (requires ANTHROPIC_API_KEY).
+- **Store**: JSON or SQLite index at `~/.trove/`. Supports cosine similarity search over embeddings. Optional AES-256-GCM encryption at rest.
+- **Embeddings**: `OllamaEmbeddingProvider` (nomic-embed-text, recommended), `TransformersEmbeddingProvider` (Hugging Face local), `LocalEmbeddingProvider` (TF-IDF, zero API), or `AnthropicEmbeddingProvider` (cloud).
+- **RAG**: Mistral via Ollama for grounded search answers. Qwen3 for general chat.
+- **Rate Limiting**: Shared `RateLimiter` class in `@trove/shared`, used by all API connectors.
 
 ## MCP Server Tools
 
@@ -49,11 +57,15 @@ packages/
 ## CLI Commands
 
 ```bash
-npx trove-os init          # Scaffold .trove.yml + .env
-npx trove-os index         # Index all sources
-npx trove-os search <q>    # Search from terminal
-npx trove-os status        # Show index stats
-npx trove-os mcp           # Start MCP server (stdio for Claude Code)
+npx trove-os setup           # Interactive setup wizard (recommended)
+npx trove-os init            # Scaffold .trove.yml + .env (non-interactive)
+npx trove-os index [source]  # Index all or specific source
+npx trove-os search <q>      # Semantic search from terminal
+npx trove-os ask <question>  # AI-powered file finder (Ollama/Claude)
+npx trove-os chat            # Interactive AI session
+npx trove-os watch           # Live re-index on file changes
+npx trove-os status          # Show index stats
+npx trove-os mcp             # Start MCP server (stdio for Claude Code)
 ```
 
 ## Config
@@ -72,7 +84,7 @@ npx trove-os mcp           # Start MCP server (stdio for Claude Code)
 
 ```bash
 pnpm install
-pnpm build        # Builds all 7 packages via Turborepo
+pnpm build        # Builds all 18 packages via Turborepo
 pnpm test         # Run tests
 pnpm dev          # Watch mode
 ```

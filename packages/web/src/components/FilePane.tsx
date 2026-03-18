@@ -25,10 +25,11 @@ interface FilePaneProps {
   initialPath?: string;
   onDrop: (files: string[], targetDir: string) => void;
   onPreview: (path: string, type: string) => void;
+  onAddFavorite?: (name: string, path: string) => void;
   refreshKey: number;
 }
 
-export function FilePane({ id, initialPath, onDrop, onPreview, refreshKey }: FilePaneProps) {
+export function FilePane({ id, initialPath, onDrop, onPreview, onAddFavorite, refreshKey }: FilePaneProps) {
   const [currentPath, setCurrentPath] = useState(initialPath ?? "");
   const [items, setItems] = useState<FileEntry[]>([]);
   const [parentPath, setParentPath] = useState<string | null>(null);
@@ -233,6 +234,11 @@ export function FilePane({ id, initialPath, onDrop, onPreview, refreshKey }: Fil
         break;
       case "copyPath":
         navigator.clipboard.writeText(item.path).catch(() => {});
+        break;
+      case "pin":
+        if (onAddFavorite) {
+          onAddFavorite(item.name, item.isDir ? item.path : item.path.substring(0, item.path.lastIndexOf(item.path.includes("/") ? "/" : "\\")));
+        }
         break;
       case "delete":
         setSelected(new Set([item.path]));
@@ -719,6 +725,34 @@ function ListRow({
         </span>
       )}
 
+      {/* Path / URL */}
+      <span
+        title={`Click to copy: ${item.path}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          navigator.clipboard.writeText(item.path).catch(() => {});
+        }}
+        style={{
+          fontSize: "8px",
+          color: colors.textGhost,
+          fontFamily: fonts.mono,
+          flexShrink: 1,
+          minWidth: "60px",
+          maxWidth: "180px",
+          textAlign: "right",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          cursor: "copy",
+          direction: "rtl",
+          transition: "color 0.15s",
+        }}
+        onMouseEnter={e => { e.currentTarget.style.color = colors.cyan; }}
+        onMouseLeave={e => { e.currentTarget.style.color = colors.textGhost; }}
+      >
+        {item.path}
+      </span>
+
       {/* Size */}
       {!item.isDir && (
         <span style={{
@@ -804,19 +838,47 @@ function GridTile({ item, isSelected, isRemoving, onClick, onDoubleClick, onCont
           {meta.icon}
         </span>
       )}
-      <span style={{
-        fontSize: "9px",
-        fontFamily: fonts.mono,
-        color: item.isDir ? colors.brand : colors.text,
-        fontWeight: item.isDir ? 600 : 400,
-        textAlign: "center",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "nowrap",
-        width: "100%",
-        maxWidth: "90px",
-      }}>
+      <span
+        title={item.path}
+        style={{
+          fontSize: "9px",
+          fontFamily: fonts.mono,
+          color: item.isDir ? colors.brand : colors.text,
+          fontWeight: item.isDir ? 600 : 400,
+          textAlign: "center",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          width: "100%",
+          maxWidth: "90px",
+        }}
+      >
         {item.name}
+      </span>
+      <span
+        title={`Click to copy: ${item.path}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          navigator.clipboard.writeText(item.path).catch(() => {});
+        }}
+        style={{
+          fontSize: "7px",
+          fontFamily: fonts.mono,
+          color: colors.textGhost,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          width: "100%",
+          maxWidth: "90px",
+          textAlign: "center",
+          cursor: "copy",
+          direction: "rtl",
+          transition: "color 0.15s",
+        }}
+        onMouseEnter={e => { e.currentTarget.style.color = colors.cyan; }}
+        onMouseLeave={e => { e.currentTarget.style.color = colors.textGhost; }}
+      >
+        {item.path}
       </span>
       {isSelected && (
         <span style={{
@@ -976,6 +1038,7 @@ function ContextMenuOverlay({ x, y, item, containerRef, onAction }: {
 
   const menuItems = [
     { key: "open", label: item.isDir ? "Open Folder" : "Preview", icon: "\u25B6" },
+    { key: "pin", label: "Pin to Favorites", icon: "\u2606" },
     { key: "rename", label: "Rename", icon: "\u270E" },
     { key: "copyPath", label: "Copy Path", icon: "\u2398" },
     { key: "delete", label: "Delete", icon: "\u2715", color: "#ef4444" },

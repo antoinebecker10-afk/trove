@@ -15,7 +15,7 @@ const LocalConfigSchema = z.object({
     .default(["node_modules", ".git", "dist", "target", "__pycache__", ".next", "build"]),
   max_depth: z.number().min(1).max(20).default(5),
   /** Enable OCR text extraction for image files (default: true) */
-  ocr: z.boolean().default(true),
+  ocr: z.boolean().default(false),
 });
 
 const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp"]);
@@ -82,11 +82,15 @@ async function extractTextOCR(
   worker: TesseractWorker,
 ): Promise<string | undefined> {
   try {
-    const { data } = await worker.recognize(filePath);
+    // Race against a timeout to prevent hangs on corrupt images
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("OCR timeout")), 30_000),
+    );
+    const { data } = await Promise.race([worker.recognize(filePath), timeout]);
     const text = data.text.trim();
     return text.length > 0 ? text : undefined;
   } catch {
-    // OCR failure — skip silently
+    // OCR failure (corrupt image, timeout, unsupported format) — skip silently
     return undefined;
   }
 }
@@ -232,7 +236,11 @@ const connector: Connector = {
           type,
           title: basename(fullPath),
           description: `${type} in ${dir}`,
-          tags: [ext.slice(1), ...dir.split(/[/\\]/).slice(-2)],
+          tags: [
+            ext.slice(1),
+            ...basename(fullPath, ext).toLowerCase().split(/[\s_\-\.]+/).filter((t) => t.length > 1),
+            ...dir.split(/[/\\]/).slice(-4).filter((t) => t.length > 0),
+          ],
           uri: fullPath,
           metadata: {
             size: fileStat.size,

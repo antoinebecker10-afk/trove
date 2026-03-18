@@ -10,6 +10,18 @@ export async function indexCommand(
   source?: string,
   options?: { verbose?: boolean },
 ): Promise<void> {
+  // Prevent tesseract.js Worker errors from crashing the process
+  process.on("uncaughtException", (err) => {
+    const msg = err?.message ?? String(err);
+    if (msg.includes("attempting to read image") || msg.includes("pix returned")) {
+      // Corrupt image — skip silently
+      return;
+    }
+    // Re-throw anything else
+    console.error("Fatal:", msg);
+    process.exit(1);
+  });
+
   log.brand("Indexing content...\n");
 
   const spinner = ora({

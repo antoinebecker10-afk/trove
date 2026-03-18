@@ -5,12 +5,16 @@ import type {
   RichTextItemResponse,
 } from "@notionhq/client/build/src/api-endpoints";
 import { z } from "zod";
+import { RateLimiter } from "@trove/shared";
 import type { Connector, ContentItem, IndexOptions } from "@trove/shared";
 
 const NotionConfigSchema = z.object({
   token_env: z.string().default("NOTION_TOKEN"),
-  database_ids: z.array(z.string()).min(1),
+  /** If empty or missing, indexes the entire workspace via search API */
+  database_ids: z.array(z.string()).optional().default([]),
 });
+
+const limiter = new RateLimiter(3);
 
 function richTextToMarkdown(richTexts: RichTextItemResponse[]): string {
   return richTexts
@@ -95,6 +99,7 @@ async function fetchPageMarkdown(client: Client, pageId: string): Promise<string
   let cursor: string | undefined = undefined;
 
   do {
+    await limiter.wait();
     const response = await client.blocks.children.list({
       block_id: pageId,
       start_cursor: cursor,
@@ -152,65 +157,96 @@ const connector: Connector = {
     const notion = new Client({ auth: token });
     let indexed = 0;
 
-    for (const dbId of parsed.database_ids) {
-      if (options.signal?.aborted) return;
+    // Helper to yield a Notion page as ContentItem
+    async function* yieldPage(
+      fullPage: PageObjectResponse,
+      opts: IndexOptions,
+    ): AsyncGenerator<ContentItem> {
+      if (opts.signal?.aborted) return;
+      const title = getPageTitle(fullPage);
+      let description = getPageDescription(fullPage);
+      let content: string | undefined;
 
+      try {
+        content = await fetchPageMarkdown(notion, fullPage.id);
+        if (!description && content) {
+          const firstLine = content.split("\n").find((l) => l.trim().length > 0);
+          if (firstLine) {
+            description = firstLine.replace(/^[#*\-]\s+/, "").slice(0, 200);
+          }
+        }
+      } catch {
+        content = undefined;
+      }
+
+      yield {
+        id: `notion:${fullPage.id}`,
+        source: "notion",
+        type: "document",
+        title,
+        description: description ?? `Notion page: ${title}`,
+        tags: [],
+        uri: fullPage.url,
+        metadata: {
+          createdTime: fullPage.created_time,
+          lastEditedTime: fullPage.last_edited_time,
+          modified: fullPage.last_edited_time,
+          icon: fullPage.icon,
+          cover: fullPage.cover,
+          parent: fullPage.parent,
+        },
+        indexedAt: new Date().toISOString(),
+        content,
+      };
+    }
+
+    if (parsed.database_ids.length > 0) {
+      // Mode: specific databases
+      for (const dbId of parsed.database_ids) {
+        if (options.signal?.aborted) return;
+        let cursor: string | undefined = undefined;
+
+        do {
+          if (options.signal?.aborted) return;
+          await limiter.wait();
+          const response = await notion.databases.query({
+            database_id: dbId,
+            start_cursor: cursor,
+            page_size: 100,
+          });
+
+          for (const page of response.results) {
+            if (!("properties" in page)) continue;
+            for await (const item of yieldPage(page as PageObjectResponse, options)) {
+              indexed++;
+              options.onProgress?.(indexed);
+              yield item;
+            }
+          }
+          cursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
+        } while (cursor);
+      }
+    } else {
+      // Mode: entire workspace via search API
       let cursor: string | undefined = undefined;
 
       do {
         if (options.signal?.aborted) return;
-
-        const response = await notion.databases.query({
-          database_id: dbId,
+        await limiter.wait();
+        const response = await notion.search({
+          filter: { property: "object", value: "page" },
           start_cursor: cursor,
           page_size: 100,
         });
 
         for (const page of response.results) {
-          if (options.signal?.aborted) return;
           if (!("properties" in page)) continue;
-
-          const fullPage = page as PageObjectResponse;
-          const title = getPageTitle(fullPage);
-          let description = getPageDescription(fullPage);
-          let content: string | undefined;
-
-          try {
-            content = await fetchPageMarkdown(notion, fullPage.id);
-            if (!description && content) {
-              const firstLine = content.split("\n").find((l) => l.trim().length > 0);
-              if (firstLine) {
-                description = firstLine.replace(/^[#*\-]\s+/, "").slice(0, 200);
-              }
-            }
-          } catch {
-            content = undefined;
+          for await (const item of yieldPage(page as PageObjectResponse, options)) {
+            indexed++;
+            options.onProgress?.(indexed);
+            yield item;
           }
-
-          const item: ContentItem = {
-            id: `notion:${fullPage.id}`,
-            source: "notion",
-            type: "document",
-            title,
-            description: description ?? `Notion page: ${title}`,
-            tags: [],
-            uri: fullPage.url,
-            metadata: {
-              createdTime: fullPage.created_time,
-              lastEditedTime: fullPage.last_edited_time,
-              icon: fullPage.icon,
-              cover: fullPage.cover,
-              parent: fullPage.parent,
-            },
-            indexedAt: new Date().toISOString(),
-            content,
-          };
-
-          indexed++;
-          options.onProgress?.(indexed);
-          yield item;
         }
-
         cursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
       } while (cursor);
     }

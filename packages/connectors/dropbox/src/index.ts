@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RateLimiter } from "@trove/shared";
 import type { Connector, ContentItem, ContentType, IndexOptions } from "@trove/shared";
 
 const DropboxConfigSchema = z.object({
@@ -51,6 +52,8 @@ function mapContentType(ext: string): ContentType {
   return "file";
 }
 
+const limiter = new RateLimiter(3);
+
 async function listAllFiles(
   path: string,
   headers: Record<string, string>,
@@ -65,6 +68,7 @@ async function listAllFiles(
     include_deleted: includeDeleted,
   };
 
+  await limiter.wait();
   const response = await fetch(`${API_BASE}/files/list_folder`, {
     method: "POST",
     headers: { ...headers, "Content-Type": "application/json" },
@@ -83,6 +87,7 @@ async function listAllFiles(
   while (data.has_more) {
     if (signal?.aborted) break;
 
+    await limiter.wait();
     const continueRes = await fetch(`${API_BASE}/files/list_folder/continue`, {
       method: "POST",
       headers: { ...headers, "Content-Type": "application/json" },
@@ -108,6 +113,7 @@ async function downloadTextContent(
 ): Promise<string | undefined> {
   try {
     const apiArg = JSON.stringify({ path });
+    await limiter.wait();
     const response = await fetch(`${CONTENT_BASE}/files/download`, {
       method: "POST",
       headers: {

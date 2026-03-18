@@ -132,7 +132,16 @@ export const api = {
     }),
 
   fileServeUrl: (path: string) =>
-    `/api/file/serve?path=${encodeURIComponent(path)}${authToken ? `&token=${encodeURIComponent(authToken)}` : ""}`,
+    `/api/file/serve?path=${encodeURIComponent(path)}`,
+
+  /** Fetch file content as blob with auth header (preferred over URL token) */
+  fileServeBlob: async (path: string): Promise<Blob> => {
+    const headers: HeadersInit = {};
+    if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+    const res = await fetch(`/api/file/serve?path=${encodeURIComponent(path)}`, { headers });
+    if (!res.ok) throw new Error(`File serve error (${res.status})`);
+    return res.blob();
+  },
 
   moveFile: (from: string, to: string) =>
     fetchJson<{ ok: boolean; newPath: string }>("/api/file/move", {
@@ -175,7 +184,6 @@ export const api = {
   },
 
   system: () => fetchJson<SystemInfo>("/api/system"),
-  getSystemInfo: () => fetchJson<SystemInfo>("/api/system"),
 
   // --- Connectors ---
 

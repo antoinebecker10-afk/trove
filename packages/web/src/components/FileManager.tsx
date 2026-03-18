@@ -11,6 +11,7 @@ interface FavoriteItem {
   name: string;
   path: string;
   icon: string;
+  hits?: number;
 }
 
 // Favorites are populated from /api/system homedir — no hardcoded paths
@@ -46,6 +47,7 @@ export function FileManager({ onPreview }: FileManagerProps) {
     try { return localStorage.getItem(SIDEBAR_KEY) !== "closed"; } catch { return true; }
   });
   const [sidebarCtx, setSidebarCtx] = useState<{ x: number; y: number; idx: number } | null>(null);
+  const [urlBarValue, setUrlBarValue] = useState("");
 
   // Resizable panes
   const [dividerPos, setDividerPos] = useState(50); // percentage
@@ -54,7 +56,7 @@ export function FileManager({ onPreview }: FileManagerProps) {
 
   // Fetch homedir from API and set initial paths + default favorites
   useEffect(() => {
-    api.getSystemInfo().then((info: { homedir?: string }) => {
+    api.system().then((info: { homedir?: string }) => {
       const home = info.homedir ?? "";
       if (!home) return;
       const sep = home.includes("\\") ? "\\" : "/";
@@ -185,6 +187,12 @@ export function FileManager({ onPreview }: FileManagerProps) {
   };
 
   const navigateToFavorite = (path: string) => {
+    // Increment hit counter
+    const updated = favorites.map(f =>
+      f.path === path ? { ...f, hits: (f.hits ?? 0) + 1 } : f
+    );
+    setFavorites(updated);
+    saveFavorites(updated);
     // Navigate left pane to this path
     setLeftPath(path);
     setRefreshLeft(n => n + 1);
@@ -195,7 +203,7 @@ export function FileManager({ onPreview }: FileManagerProps) {
       ref={containerRef}
       style={{ display: "flex", flexDirection: "column", height: "100%", position: "relative" }}
     >
-      {/* Hint bar */}
+      {/* URL bar + Hint bar */}
       <div
         style={{
           padding: "6px 12px",
@@ -204,22 +212,65 @@ export function FileManager({ onPreview }: FileManagerProps) {
           color: colors.textGhost,
           borderBottom: `1px solid ${colors.border}`,
           display: "flex",
-          gap: "16px",
+          gap: "10px",
           alignItems: "center",
           flexShrink: 0,
         }}
       >
-        <span>Drag files between panes to move</span>
-        <span style={{ fontSize: "9px" }}>
-          Click = select
-          {" \u00B7 "}Ctrl+Click = multi
-          {" \u00B7 "}Dbl-click = preview
-          {" \u00B7 "}Right-click = menu
+        {/* URL navigation bar */}
+        <div style={{ display: "flex", alignItems: "center", gap: "4px", flex: 1, maxWidth: "420px" }}>
+          <span style={{ fontSize: "9px", color: colors.textDim, flexShrink: 0 }}>GO</span>
+          <input
+            type="text"
+            placeholder="Paste a path to navigate..."
+            value={urlBarValue}
+            onChange={(e) => setUrlBarValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && urlBarValue.trim()) {
+                setLeftPath(urlBarValue.trim());
+                setRefreshLeft(n => n + 1);
+                setUrlBarValue("");
+              }
+            }}
+            onPaste={(e) => {
+              // Auto-navigate on paste
+              const pasted = e.clipboardData.getData("text").trim();
+              if (pasted) {
+                setTimeout(() => {
+                  setLeftPath(pasted);
+                  setRefreshLeft(n => n + 1);
+                  setUrlBarValue("");
+                }, 0);
+              }
+            }}
+            style={{
+              flex: 1,
+              padding: "3px 8px",
+              background: "rgba(255,255,255,0.03)",
+              border: `1px solid ${colors.border}`,
+              borderRadius: "4px",
+              color: colors.text,
+              fontSize: "10px",
+              fontFamily: fonts.mono,
+              outline: "none",
+              transition: "border-color 0.15s, box-shadow 0.15s",
+            }}
+            onFocus={e => {
+              e.currentTarget.style.borderColor = colors.brand + "66";
+              e.currentTarget.style.boxShadow = `0 0 0 1px ${colors.brand}22`;
+            }}
+            onBlur={e => {
+              e.currentTarget.style.borderColor = colors.border;
+              e.currentTarget.style.boxShadow = "none";
+            }}
+          />
+        </div>
+
+        <span style={{ fontSize: "9px", color: colors.textGhost }}>
+          Drag {"\u00B7"} Ctrl+Click {"\u00B7"} Dbl-click {"\u00B7"} Right-click
         </span>
-        <span style={{ marginLeft: "auto", display: "flex", gap: "8px", alignItems: "center" }}>
-          <span style={{ fontSize: "9px", color: colors.textGhost }}>
-            Del \u00B7 F2 \u00B7 Ctrl+C \u00B7 Enter
-          </span>
+        <span style={{ marginLeft: "auto", fontSize: "9px", color: colors.textGhost }}>
+          Del {"\u00B7"} F2 {"\u00B7"} Ctrl+C {"\u00B7"} Enter
         </span>
       </div>
 
@@ -275,16 +326,20 @@ export function FileManager({ onPreview }: FileManagerProps) {
             </button>
           </div>
 
-          {/* Favorite items */}
+          {/* Favorite items — sorted by usage */}
           <div style={{ flex: 1, overflow: "auto", padding: "4px 0" }}>
-            {favorites.map((fav, i) => (
+            {[...favorites]
+              .map((fav, origIdx) => ({ ...fav, origIdx }))
+              .sort((a, b) => (b.hits ?? 0) - (a.hits ?? 0))
+              .map(({ origIdx, ...fav }) => (
               <div
                 key={fav.path}
                 onClick={() => navigateToFavorite(fav.path)}
                 onContextMenu={(e) => {
                   e.preventDefault();
-                  setSidebarCtx({ x: e.clientX, y: e.clientY, idx: i });
+                  setSidebarCtx({ x: e.clientX, y: e.clientY, idx: origIdx });
                 }}
+                title={fav.path}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -312,12 +367,25 @@ export function FileManager({ onPreview }: FileManagerProps) {
                   {fav.icon}
                 </span>
                 <span style={{
+                  flex: 1,
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
                 }}>
                   {fav.name}
                 </span>
+                {(fav.hits ?? 0) > 0 && (
+                  <span style={{
+                    fontSize: "8px",
+                    color: colors.textGhost,
+                    background: "rgba(255,255,255,0.04)",
+                    padding: "1px 4px",
+                    borderRadius: "6px",
+                    flexShrink: 0,
+                  }}>
+                    {fav.hits}
+                  </span>
+                )}
               </div>
             ))}
           </div>
@@ -417,6 +485,7 @@ export function FileManager({ onPreview }: FileManagerProps) {
               initialPath={leftPath}
               onDrop={handleDrop}
               onPreview={onPreview}
+              onAddFavorite={addFavorite}
               refreshKey={refreshLeft}
             />
           </div>
@@ -462,6 +531,7 @@ export function FileManager({ onPreview }: FileManagerProps) {
               initialPath={rightPath}
               onDrop={handleDrop}
               onPreview={onPreview}
+              onAddFavorite={addFavorite}
               refreshKey={refreshRight}
             />
           </div>

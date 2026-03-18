@@ -1,4 +1,4 @@
-import { colors, fonts, FILTERS, SOURCES, SOURCE_META } from "../lib/theme";
+import { colors, fonts, FILTERS, SOURCE_META } from "../lib/theme";
 
 interface FilterBarProps {
   active: string;
@@ -6,9 +6,19 @@ interface FilterBarProps {
   activeSource: string;
   onSourceFilter: (source: string) => void;
   resultCount: number;
+  /** Connected source IDs from the API (e.g. ["local", "github", "discord"]) */
+  connectedSources?: string[];
 }
 
-export function FilterBar({ active, onFilter, activeSource, onSourceFilter, resultCount }: FilterBarProps) {
+export function FilterBar({ active, onFilter, activeSource, onSourceFilter, resultCount, connectedSources }: FilterBarProps) {
+  // Build source list: "All" + only connected sources (with fallback to static list)
+  const sourceList = connectedSources && connectedSources.length > 0
+    ? ["All", ...connectedSources.map(id => {
+        const meta = SOURCE_META[id];
+        return meta?.label ?? id.charAt(0).toUpperCase() + id.slice(1);
+      })]
+    : ["All"];
+
   return (
     <div
       style={{
@@ -55,7 +65,7 @@ export function FilterBar({ active, onFilter, activeSource, onSourceFilter, resu
         </span>
       </div>
 
-      {/* Source filters */}
+      {/* Source filters — only connected sources */}
       <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
         <span
           style={{
@@ -68,10 +78,13 @@ export function FilterBar({ active, onFilter, activeSource, onSourceFilter, resu
         >
           SOURCE
         </span>
-        {SOURCES.map((s) => {
-          const meta = SOURCE_META[s.toLowerCase()];
+        {sourceList.map((s) => {
+          const sourceId = Object.entries(SOURCE_META).find(([, v]) => v.label === s)?.[0] ?? s.toLowerCase();
+          const meta = SOURCE_META[sourceId];
           const isActive = activeSource === s;
+          const isAll = s === "All";
           const accentColor = meta?.color ?? colors.textDim;
+          const isConnected = !isAll && connectedSources?.includes(sourceId);
           return (
             <button
               key={s}
@@ -88,9 +101,23 @@ export function FilterBar({ active, onFilter, activeSource, onSourceFilter, resu
                 color: isActive ? accentColor : colors.textGhost,
                 transition: "all 0.15s",
                 textTransform: "uppercase",
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
               }}
             >
               {meta?.icon ? `${meta.icon} ` : ""}{s}
+              {isConnected && (
+                <span style={{
+                  width: "5px",
+                  height: "5px",
+                  borderRadius: "50%",
+                  background: colors.green,
+                  boxShadow: `0 0 4px ${colors.green}`,
+                  display: "inline-block",
+                  flexShrink: 0,
+                }} />
+              )}
             </button>
           );
         })}
