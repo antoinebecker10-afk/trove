@@ -1,6 +1,8 @@
 import { colors, fonts } from "../lib/theme";
+import { useI18n } from "../lib/i18n";
 
 export function McpBanner() {
+  const { t } = useI18n();
   return (
     <div
       style={{
@@ -27,7 +29,7 @@ export function McpBanner() {
             fontFamily: fonts.mono,
           }}
         >
-          MCP SERVER — CLAUDE CODE INTEGRATION
+          {t("mcp.ready")}
         </div>
         <div style={{ fontSize: "11px", color: colors.textGhost }}>
           Run:{" "}

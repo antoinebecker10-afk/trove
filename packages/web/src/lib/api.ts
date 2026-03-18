@@ -210,4 +210,10 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ connectorId }),
     }),
+
+  /** Launch Electron widget mode */
+  launchWidget: () =>
+    fetchJson<{ ok: boolean }>("/api/widget", {
+      method: "POST",
+    }),
 };

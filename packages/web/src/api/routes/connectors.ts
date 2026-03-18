@@ -317,6 +317,40 @@ export async function handleConnectorRoutes(
         tokenUrl: "https://app.raindrop.io/settings/integrations",
         tokenHelp: "Create a test token in Raindrop.io integrations settings",
       },
+      {
+        id: "openclaw",
+        name: "OpenClaw",
+        description: "Index conversations, memories, and skills from your OpenClaw AI assistant",
+        icon: "🤖",
+        status: configuredConnectors.has("openclaw") ? "connected" : "available",
+        fields: [
+          { key: "url", label: "Gateway URL", type: "text", placeholder: "http://localhost:18789", required: false },
+          { key: "include_conversations", label: "Index conversations", type: "toggle", placeholder: "", required: false },
+          { key: "include_memories", label: "Index memories", type: "toggle", placeholder: "", required: false },
+          { key: "include_skills", label: "Index skills", type: "toggle", placeholder: "", required: false },
+          { key: "since_days", label: "History (days)", type: "number", placeholder: "90", required: false },
+        ],
+        requiresToken: true,
+        tokenEnv: "OPENCLAW_TOKEN",
+        tokenSet: envContent.includes("OPENCLAW_TOKEN="),
+        tokenUrl: "https://docs.openclaw.ai/gateway/authentication",
+        tokenHelp: "Copy the gateway token from your OpenClaw config (~/.openclaw/config.yaml → gateway.token)",
+      },
+      {
+        id: "claude-code",
+        name: "Claude Code",
+        description: "Index your Claude Code conversations, memories, and session transcripts",
+        icon: "🧠",
+        status: configuredConnectors.has("claude-code") ? "connected" : "available",
+        fields: [
+          { key: "data_dir", label: "Data directory", type: "text", placeholder: "~/.claude", required: false },
+          { key: "include_history", label: "Index prompt history", type: "toggle", placeholder: "", required: false },
+          { key: "include_sessions", label: "Index full sessions", type: "toggle", placeholder: "", required: false },
+          { key: "include_memories", label: "Index project memories", type: "toggle", placeholder: "", required: false },
+          { key: "since_days", label: "History (days)", type: "number", placeholder: "90", required: false },
+        ],
+        requiresToken: false,
+      },
     ];
 
     // Add stats for connected connectors

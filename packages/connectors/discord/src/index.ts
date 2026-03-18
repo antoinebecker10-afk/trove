@@ -125,7 +125,7 @@ async function discordFetch<T>(
 
   if (!response.ok) {
     // Consume body to avoid leak
-    await response.text().catch(() => {});
+    await response.text().catch(() => { /* drain body */ });
 
     if (response.status === 429) {
       // Rate limited — parse Retry-After and retry once

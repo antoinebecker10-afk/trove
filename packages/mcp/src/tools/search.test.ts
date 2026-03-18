@@ -71,9 +71,9 @@ describe("registerSearchTool", () => {
 
     expect(result.content[0].type).toBe("text");
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed).toHaveLength(1);
-    expect(parsed[0].title).toBe("utils.ts");
-    expect(parsed[0].relevance).toBe(0.95);
+    expect(parsed.results).toHaveLength(1);
+    expect(parsed.results[0].title).toBe("utils.ts");
+    expect(parsed.results[0].relevance).toBe(0.95);
   });
 
   it("falls back to keyword search when semantic returns empty", async () => {
@@ -93,8 +93,8 @@ describe("registerSearchTool", () => {
     const result = await handler({ query: "readme", limit: 10 });
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed).toHaveLength(1);
-    expect(parsed[0].title).toBe("readme.md");
+    expect(parsed.results).toHaveLength(1);
+    expect(parsed.results[0].title).toBe("readme.md");
   });
 
   it("returns a message when no results found", async () => {

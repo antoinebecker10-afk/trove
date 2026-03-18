@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
-import { colors, fonts } from "../lib/theme";
+import { colors, fonts, zIndex } from "../lib/theme";
 import { api, type ApiContentItem } from "../lib/api";
+import { useI18n } from "../lib/i18n";
 
 interface MoveDialogProps {
   item: ApiContentItem;
@@ -9,6 +10,7 @@ interface MoveDialogProps {
 }
 
 export function MoveDialog({ item, onClose, onMoved }: MoveDialogProps) {
+  const { t } = useI18n();
   const [currentDir, setCurrentDir] = useState<string>("");
   const [dirs, setDirs] = useState<Array<{ name: string; path: string }>>([]);
   const [loading, setLoading] = useState(true);
@@ -66,7 +68,7 @@ export function MoveDialog({ item, onClose, onMoved }: MoveDialogProps) {
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 1100,
+        zIndex: zIndex.modalOverlay,
         background: "rgba(0,0,0,0.85)",
         backdropFilter: "blur(8px)",
         display: "flex",
@@ -99,7 +101,7 @@ export function MoveDialog({ item, onClose, onMoved }: MoveDialogProps) {
           }}
         >
           <span style={{ fontSize: "13px", fontWeight: 600, color: colors.cyan, fontFamily: fonts.mono }}>
-            MOVE FILE
+            {t("moveDialog.moveTo")}
           </span>
           <span style={{ flex: 1 }} />
           <button
@@ -127,7 +129,7 @@ export function MoveDialog({ item, onClose, onMoved }: MoveDialogProps) {
             color: colors.textMuted,
           }}
         >
-          Moving: <span style={{ color: colors.brand }}>{fileName}</span>
+          {t("moveDialog.moving")} <span style={{ color: colors.brand }}>{fileName}</span>
         </div>
 
         {/* Current path */}
@@ -249,7 +251,7 @@ export function MoveDialog({ item, onClose, onMoved }: MoveDialogProps) {
               cursor: "pointer",
             }}
           >
-            CANCEL
+            {t("moveDialog.cancel")}
           </button>
           <button
             onClick={handleMove}
@@ -267,7 +269,7 @@ export function MoveDialog({ item, onClose, onMoved }: MoveDialogProps) {
               opacity: moving ? 0.5 : 1,
             }}
           >
-            {moving ? "MOVING..." : "MOVE HERE"}
+            {moving ? "MOVING..." : t("moveDialog.moveHere")}
           </button>
         </div>
       </div>

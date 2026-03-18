@@ -34,13 +34,13 @@ describe("registerLocateTool", () => {
     const result = await handler({ query: "config", limit: 10 });
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed).toHaveLength(1);
-    expect(parsed[0].title).toBe("config.ts");
-    expect(parsed[0].uri).toBe("/home/user/config.ts");
-    expect(parsed[0].relevance).toBe(0.88);
+    expect(parsed.results).toHaveLength(1);
+    expect(parsed.results[0].title).toBe("config.ts");
+    expect(parsed.results[0].uri).toBe("/home/user/config.ts");
+    expect(parsed.results[0].relevance).toBe(0.88);
     // No file_content or content fields
-    expect(parsed[0].file_content).toBeUndefined();
-    expect(parsed[0].content).toBeUndefined();
+    expect(parsed.results[0].file_content).toBeUndefined();
+    expect(parsed.results[0].content).toBeUndefined();
   });
 
   it("falls back to keyword search", async () => {
@@ -62,8 +62,8 @@ describe("registerLocateTool", () => {
     const result = await handler({ query: "readme", limit: 10 });
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed).toHaveLength(1);
-    expect(parsed[0].title).toBe("readme.md");
+    expect(parsed.results).toHaveLength(1);
+    expect(parsed.results[0].title).toBe("readme.md");
   });
 
   it("returns message when nothing found", async () => {

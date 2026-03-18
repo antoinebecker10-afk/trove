@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { colors, fonts, radii, shadows, transitions, zIndex } from "../lib/theme";
+import { useI18n } from "../lib/i18n";
 
 /* ------------------------------------------------------------------
  *  Types
@@ -17,44 +18,44 @@ interface ShortcutCategory {
 }
 
 /* ------------------------------------------------------------------
- *  Shortcut data
+ *  Shortcut key data (descriptions resolved at render via t())
  * ------------------------------------------------------------------ */
 
-const CATEGORIES: ShortcutCategory[] = [
+const CATEGORY_KEYS: { titleKey: string; shortcuts: { keys: string; descKey: string }[] }[] = [
   {
-    title: "Navigation",
+    titleKey: "keyboard.navigation",
     shortcuts: [
-      { keys: "1 – 5", description: "Switch view tabs" },
-      { keys: "Tab", description: "Cycle between panels" },
-      { keys: "↑ / ↓", description: "Navigate list items" },
-      { keys: "Enter", description: "Open selected item" },
+      { keys: "1 – 5", descKey: "keyboard.switchTabs" },
+      { keys: "Tab", descKey: "keyboard.cyclePanels" },
+      { keys: "↑ / ↓", descKey: "keyboard.navigateList" },
+      { keys: "Enter", descKey: "keyboard.openSelected" },
     ],
   },
   {
-    title: "File Manager",
+    titleKey: "keyboard.fileManager",
     shortcuts: [
-      { keys: "Backspace", description: "Go to parent directory" },
-      { keys: "Space", description: "Quick preview file" },
-      { keys: "Ctrl+N", description: "New folder" },
-      { keys: "F2", description: "Rename selected" },
-      { keys: "Delete", description: "Delete selected" },
+      { keys: "Backspace", descKey: "keyboard.goParent" },
+      { keys: "Space", descKey: "keyboard.quickPreview" },
+      { keys: "Ctrl+N", descKey: "keyboard.newFolder" },
+      { keys: "F2", descKey: "keyboard.rename" },
+      { keys: "Delete", descKey: "keyboard.deleteSelected" },
     ],
   },
   {
-    title: "Search",
+    titleKey: "keyboard.search",
     shortcuts: [
-      { keys: "Ctrl+K", description: "Open command palette" },
-      { keys: "/", description: "Focus search bar" },
-      { keys: "Escape", description: "Clear search / close" },
+      { keys: "Ctrl+K", descKey: "keyboard.openPalette" },
+      { keys: "/", descKey: "keyboard.focusSearch" },
+      { keys: "Escape", descKey: "keyboard.clearSearch" },
     ],
   },
   {
-    title: "General",
+    titleKey: "keyboard.general",
     shortcuts: [
-      { keys: "?", description: "Show this help" },
-      { keys: "Ctrl+R", description: "Reindex sources" },
-      { keys: "Ctrl+,", description: "Open settings" },
-      { keys: "Escape", description: "Close modal / overlay" },
+      { keys: "?", descKey: "keyboard.showHelp" },
+      { keys: "Ctrl+R", descKey: "keyboard.reindex" },
+      { keys: "Ctrl+,", descKey: "keyboard.openSettings" },
+      { keys: "Escape", descKey: "keyboard.closeModal" },
     ],
   },
 ];
@@ -64,6 +65,7 @@ const CATEGORIES: ShortcutCategory[] = [
  * ------------------------------------------------------------------ */
 
 export function KeyboardHelp() {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
 
   const handleKey = useCallback((e: KeyboardEvent) => {
@@ -140,7 +142,7 @@ export function KeyboardHelp() {
               textTransform: "uppercase",
             }}
           >
-            Keyboard Shortcuts
+            {t("keyboard.title")}
           </span>
           <button
             onClick={() => setOpen(false)}
@@ -166,8 +168,8 @@ export function KeyboardHelp() {
             gap: "24px",
           }}
         >
-          {CATEGORIES.map((cat) => (
-            <div key={cat.title}>
+          {CATEGORY_KEYS.map((cat) => (
+            <div key={cat.titleKey}>
               <div
                 style={{
                   fontSize: "9px",
@@ -178,7 +180,7 @@ export function KeyboardHelp() {
                   fontWeight: 600,
                 }}
               >
-                {cat.title}
+                {t(cat.titleKey)}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 {cat.shortcuts.map((sc) => (
@@ -192,7 +194,7 @@ export function KeyboardHelp() {
                     }}
                   >
                     <span style={{ fontSize: "10px", color: colors.textMuted }}>
-                      {sc.description}
+                      {t(sc.descKey)}
                     </span>
                     <Kbd>{sc.keys}</Kbd>
                   </div>

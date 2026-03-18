@@ -1,8 +1,44 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { colors, fonts } from "../lib/theme";
+import { colors, fonts, radii, transitions, zIndex, SOURCE_META } from "../lib/theme";
 import { api, getApiToken, type ConnectorInfo } from "../lib/api";
+import { useI18n } from "../lib/i18n";
+
+/* ------------------------------------------------------------------ */
+/*  Injected keyframes (once)                                          */
+/* ------------------------------------------------------------------ */
+
+const _injected = (() => {
+  if (typeof document === "undefined") return true;
+  const id = "trove-sources-keyframes";
+  if (document.getElementById(id)) return true;
+  const style = document.createElement("style");
+  style.id = id;
+  style.textContent = `
+    @keyframes troveFadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes trovePulse {
+      0%, 100% { opacity: 0.4; }
+      50%      { opacity: 0.8; }
+    }
+    @keyframes troveIndeterminate {
+      0%   { transform: translateX(-100%); }
+      100% { transform: translateX(400%); }
+    }
+  `;
+  document.head.appendChild(style);
+  return true;
+})();
+
+/* ------------------------------------------------------------------ */
+/*  Main component                                                     */
+/* ------------------------------------------------------------------ */
 
 export function SourcesView() {
+  void _injected;
+  const { t } = useI18n();
+
   const [connectors, setConnectors] = useState<ConnectorInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [setupId, setSetupId] = useState<string | null>(null);
@@ -30,7 +66,7 @@ export function SourcesView() {
   const handleIndex = async (id: string) => {
     setIndexingId(id);
     setIndexProgress(0);
-    setIndexLogs([`► Indexing ${id}...`]);
+    setIndexLogs([]);
 
     let finalCount = 0;
 
@@ -50,8 +86,6 @@ export function SourcesView() {
         throw new Error(`HTTP ${resp.status}: ${errBody || resp.statusText}`);
       }
       if (!resp.body) {
-        // Fallback: non-streaming, read full response
-        setIndexLogs((prev) => [...prev, "[trove] Streaming not supported, using fallback..."]);
         const text = await resp.text();
         const events = text.split("\n").filter((l) => l.startsWith("data: "));
         for (const line of events) {
@@ -62,8 +96,8 @@ export function SourcesView() {
           } catch { /* skip */ }
         }
         setIndexProgress(finalCount);
-        setIndexLogs((prev) => [...prev, `✓ Done — ${finalCount} items indexed`]);
-        showMessage(`Indexed ${finalCount} items from ${id}`, "success");
+        setIndexLogs((prev) => [...prev, t("sources.doneItems").replace("{count}", String(finalCount))]);
+        showMessage(t("sources.indexedItems").replace("{count}", String(finalCount)).replace("{source}", id), "success");
         load();
         return;
       }
@@ -100,22 +134,22 @@ export function SourcesView() {
         }
       }
 
-      setIndexLogs((prev) => [...prev, `✓ Done — ${finalCount} items indexed`]);
-      showMessage(`Indexed ${finalCount} items from ${id}`, "success");
+      setIndexLogs((prev) => [...prev, t("sources.doneItems").replace("{count}", String(finalCount))]);
+      showMessage(t("sources.indexedItems").replace("{count}", String(finalCount)).replace("{source}", id), "success");
       load();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Index failed";
-      setIndexLogs((prev) => [...prev, `✗ Error: ${msg}`]);
+      setIndexLogs((prev) => [...prev, `Error: ${msg}`]);
       showMessage(msg, "error");
     }
     setIndexingId(null);
   };
 
   const handleDisconnect = async (id: string) => {
-    if (!confirm(`Disconnect ${id}? This removes it from your config.`)) return;
+    if (!confirm(t("sources.disconnectConfirm").replace("{id}", id))) return;
     try {
       await api.disconnectConnector(id);
-      showMessage(`${id} disconnected`, "success");
+      showMessage(t("sources.disconnected").replace("{id}", id), "success");
       load();
     } catch (err) {
       showMessage(err instanceof Error ? err.message : "Failed", "error");
@@ -125,39 +159,37 @@ export function SourcesView() {
   const connected = connectors.filter((c) => c.status === "connected");
   const available = connectors.filter((c) => c.status === "available");
   const comingSoon = connectors.filter((c) => c.status === "coming_soon");
-
-  // Total items across all connected sources
   const totalItems = connected.reduce((sum, c) => sum + (c.itemCount ?? 0), 0);
 
   return (
-    <div style={{ maxWidth: "900px", margin: "0 auto", padding: "40px 32px" }}>
-      {/* Hero header */}
-      <div style={{ marginBottom: "40px", textAlign: "center" }}>
+    <div style={{ maxWidth: "960px", margin: "0 auto", padding: "48px 32px" }}>
+      {/* Header */}
+      <div style={{ marginBottom: "40px" }}>
         <h1 style={{
-          fontSize: "26px", fontWeight: 700, color: "#fff", margin: "0 0 8px",
-          letterSpacing: "-0.02em",
+          fontSize: "28px", fontWeight: 600, color: colors.text, margin: "0 0 6px",
+          fontFamily: fonts.sans, letterSpacing: "-0.02em",
         }}>
-          Your Sources
+          {t("sources.title")}
         </h1>
         <p style={{
-          fontSize: "14px", color: colors.textDim, margin: "0 0 20px",
-          lineHeight: "1.6",
+          fontSize: "15px", color: colors.textMuted, margin: "0 0 24px",
+          fontFamily: fonts.sans, lineHeight: "1.5",
         }}>
-          Connect your tools and let Trove index everything in one place.
+          {t("sources.subtitle")}
         </p>
 
         {/* Summary stats */}
         {connected.length > 0 && (
           <div style={{
-            display: "inline-flex", gap: "24px", padding: "12px 28px",
-            background: "rgba(255,255,255,0.02)", border: `1px solid ${colors.border}`,
-            borderRadius: "40px",
+            display: "inline-flex", gap: "32px", padding: "16px 28px",
+            background: colors.surface, border: `1px solid ${colors.border}`,
+            borderRadius: radii.lg,
           }}>
-            <Stat value={connected.length} label="connected" color={colors.green} />
+            <Stat value={connected.length} label={t("sources.connected")} />
             <div style={{ width: "1px", background: colors.border }} />
-            <Stat value={totalItems} label="items indexed" color={colors.brand} />
+            <Stat value={totalItems} label={t("sources.itemsIndexed")} />
             <div style={{ width: "1px", background: colors.border }} />
-            <Stat value={available.length + comingSoon.length} label="more available" color={colors.cyan} />
+            <Stat value={available.length + comingSoon.length} label={t("sources.available")} />
           </div>
         )}
       </div>
@@ -165,12 +197,12 @@ export function SourcesView() {
       {/* Message toast */}
       {message && (
         <div style={{
-          padding: "12px 16px", marginBottom: "20px", borderRadius: "8px",
-          background: message.type === "success" ? "rgba(74,222,128,0.06)" : "rgba(239,68,68,0.06)",
-          border: `1px solid ${message.type === "success" ? "rgba(74,222,128,0.2)" : "rgba(239,68,68,0.2)"}`,
-          color: message.type === "success" ? "#4ade80" : "#f87171",
-          fontSize: "13px", fontFamily: fonts.mono, animation: "fadeIn 0.2s ease",
-          textAlign: "center",
+          padding: "12px 18px", marginBottom: "20px", borderRadius: radii.md,
+          background: message.type === "success" ? "rgba(52,211,153,0.08)" : "rgba(248,113,113,0.08)",
+          border: `1px solid ${message.type === "success" ? "rgba(52,211,153,0.2)" : "rgba(248,113,113,0.2)"}`,
+          color: message.type === "success" ? colors.success : colors.error,
+          fontSize: "13px", fontFamily: fonts.sans,
+          animation: "troveFadeIn 0.2s ease",
         }}>
           {message.text}
         </div>
@@ -180,44 +212,101 @@ export function SourcesView() {
         <LoadingSkeleton />
       ) : (
         <>
-          {/* Connected sources — large cards */}
+          {/* Empty state — lobster helper */}
+          {connected.length === 0 && (
+            <div style={{ textAlign: "center", padding: "32px", color: colors.textMuted }}>
+              <span style={{ fontSize: "40px", display: "block", marginBottom: "12px" }}>💎</span>
+              <p style={{ fontSize: "15px", fontFamily: fonts.sans, margin: "0 0 4px" }}>No sources connected yet</p>
+              <p style={{ fontSize: "13px", color: colors.textDim }}>Connect your first source below to start indexing</p>
+            </div>
+          )}
+
+          {/* Connected sources */}
           {connected.length > 0 && (
-            <Section title="Connected" count={connected.length}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))", gap: "12px" }}>
-                {connected.map((c) => (
-                  <ConnectedCard
-                    key={c.id}
-                    connector={c}
-                    onIndex={() => handleIndex(c.id)}
-                    onDisconnect={() => handleDisconnect(c.id)}
-                    indexing={indexingId === c.id}
-                    progress={indexingId === c.id ? indexProgress : 0}
-                    logs={indexingId === c.id || indexLogs.length > 0 ? indexLogs : []}
-                    showLogs={indexingId === c.id || (indexLogs.length > 0 && c.id === connectors.find((x) => indexLogs[0]?.includes(x.id))?.id)}
-                  />
-                ))}
+            <Section title={t("sources.connected")} count={connected.length}>
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, 1fr)",
+                gap: "16px",
+              }}>
+                <style>{`
+                  @media (max-width: 1024px) {
+                    .trove-sources-grid-connected { grid-template-columns: repeat(2, 1fr) !important; }
+                  }
+                  @media (max-width: 640px) {
+                    .trove-sources-grid-connected { grid-template-columns: 1fr !important; }
+                  }
+                `}</style>
+                <div className="trove-sources-grid-connected" style={{
+                  display: "contents",
+                }}>
+                  {connected.map((c) => (
+                    <ConnectedCard
+                      key={c.id}
+                      connector={c}
+                      onIndex={() => handleIndex(c.id)}
+                      onDisconnect={() => handleDisconnect(c.id)}
+                      indexing={indexingId === c.id}
+                      progress={indexingId === c.id ? indexProgress : 0}
+                      logs={indexingId === c.id || indexLogs.length > 0 ? indexLogs : []}
+                      showLogs={indexingId === c.id || (indexLogs.length > 0 && c.id === connectors.find((x) => indexLogs[0]?.includes(x.id))?.id)}
+                    />
+                  ))}
+                </div>
               </div>
             </Section>
           )}
 
-          {/* Available — grid of setup cards */}
+          {/* Available */}
           {available.length > 0 && (
-            <Section title="Ready to connect" count={available.length}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: "12px" }}>
-                {available.map((c) => (
-                  <AvailableCard key={c.id} connector={c} onSetup={() => setSetupId(c.id)} />
-                ))}
+            <Section title={t("sources.available")} count={available.length}>
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, 1fr)",
+                gap: "16px",
+              }}>
+                <style>{`
+                  @media (max-width: 1024px) {
+                    .trove-sources-grid-available { grid-template-columns: repeat(2, 1fr) !important; }
+                  }
+                  @media (max-width: 640px) {
+                    .trove-sources-grid-available { grid-template-columns: 1fr !important; }
+                  }
+                `}</style>
+                <div className="trove-sources-grid-available" style={{
+                  display: "contents",
+                }}>
+                  {available.map((c) => (
+                    <AvailableCard key={c.id} connector={c} onSetup={() => setSetupId(c.id)} />
+                  ))}
+                </div>
               </div>
             </Section>
           )}
 
-          {/* Coming soon — compact grid */}
+          {/* Coming soon */}
           {comingSoon.length > 0 && (
-            <Section title="Coming soon" count={comingSoon.length}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "10px" }}>
-                {comingSoon.map((c) => (
-                  <ComingSoonCard key={c.id} connector={c} />
-                ))}
+            <Section title={t("sources.comingSoon")} count={comingSoon.length}>
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, 1fr)",
+                gap: "16px",
+              }}>
+                <style>{`
+                  @media (max-width: 1024px) {
+                    .trove-sources-grid-soon { grid-template-columns: repeat(2, 1fr) !important; }
+                  }
+                  @media (max-width: 640px) {
+                    .trove-sources-grid-soon { grid-template-columns: 1fr !important; }
+                  }
+                `}</style>
+                <div className="trove-sources-grid-soon" style={{
+                  display: "contents",
+                }}>
+                  {comingSoon.map((c) => (
+                    <ComingSoonCard key={c.id} connector={c} />
+                  ))}
+                </div>
               </div>
             </Section>
           )}
@@ -231,7 +320,7 @@ export function SourcesView() {
           onClose={() => setSetupId(null)}
           onComplete={() => {
             setSetupId(null);
-            showMessage("Connected! Click INDEX to start indexing.", "success");
+            showMessage(t("sources.connectedMsg"), "success");
             load();
           }}
         />
@@ -240,17 +329,17 @@ export function SourcesView() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
+/* ------------------------------------------------------------------ */
+/*  Sub-components                                                     */
+/* ------------------------------------------------------------------ */
 
-function Stat({ value, label, color }: { value: number; label: string; color: string }) {
+function Stat({ value, label }: { value: number; label: string }) {
   return (
     <div style={{ textAlign: "center" }}>
-      <div style={{ fontSize: "18px", fontWeight: 700, color, fontFamily: fonts.mono }}>
+      <div style={{ fontSize: "20px", fontWeight: 600, color: colors.text, fontFamily: fonts.sans }}>
         {value.toLocaleString()}
       </div>
-      <div style={{ fontSize: "10px", color: colors.textDim, fontFamily: fonts.mono, letterSpacing: "0.04em" }}>
+      <div style={{ fontSize: "12px", color: colors.textDim, fontFamily: fonts.sans, marginTop: "2px" }}>
         {label}
       </div>
     </div>
@@ -259,22 +348,21 @@ function Stat({ value, label, color }: { value: number; label: string; color: st
 
 function Section({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
   return (
-    <div style={{ marginBottom: "36px" }}>
+    <div style={{ marginBottom: "40px" }}>
       <div style={{
         display: "flex", alignItems: "center", gap: "10px",
-        marginBottom: "14px", paddingBottom: "8px",
-        borderBottom: `1px solid ${colors.border}`,
+        marginBottom: "16px",
       }}>
         <span style={{
-          fontSize: "15px", fontWeight: 600, color: colors.text,
-          letterSpacing: "-0.01em",
+          fontSize: "16px", fontWeight: 600, color: colors.text,
+          fontFamily: fonts.sans, letterSpacing: "-0.01em",
         }}>
           {title}
         </span>
         <span style={{
-          fontSize: "11px", padding: "2px 8px", borderRadius: "10px",
-          background: "rgba(255,255,255,0.04)", color: colors.textDim,
-          fontFamily: fonts.mono,
+          fontSize: "12px", padding: "2px 10px", borderRadius: radii.full,
+          background: colors.surface, color: colors.textMuted,
+          fontFamily: fonts.sans, fontWeight: 500,
         }}>
           {count}
         </span>
@@ -284,9 +372,40 @@ function Section({ title, count, children }: { title: string; count: number; chi
   );
 }
 
-// ---------------------------------------------------------------------------
-// Connected card — large, detailed
-// ---------------------------------------------------------------------------
+/* ------------------------------------------------------------------ */
+/*  Status badge                                                       */
+/* ------------------------------------------------------------------ */
+
+function StatusBadge({ status }: { status: "connected" | "available" | "coming_soon" }) {
+  const { t } = useI18n();
+  const config = {
+    connected: { label: t("sources.connected"), bg: "rgba(52,211,153,0.10)", color: colors.success, dot: colors.success },
+    available: { label: t("sources.available"), bg: colors.surface, color: colors.textMuted, dot: undefined },
+    coming_soon: { label: t("sources.comingSoon"), bg: colors.surface, color: colors.textDim, dot: undefined },
+  }[status];
+
+  return (
+    <div style={{
+      display: "inline-flex", alignItems: "center", gap: "6px",
+      padding: "4px 10px", borderRadius: radii.full,
+      background: config.bg, fontSize: "11px", fontWeight: 500,
+      color: config.color, fontFamily: fonts.sans,
+    }}>
+      {config.dot && (
+        <span style={{
+          width: "6px", height: "6px", borderRadius: "50%",
+          background: config.dot, display: "inline-block",
+          flexShrink: 0,
+        }} />
+      )}
+      {config.label}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Connected card                                                     */
+/* ------------------------------------------------------------------ */
 
 function ConnectedCard({ connector: c, onIndex, onDisconnect, indexing, progress, logs, showLogs }: {
   connector: ConnectorInfo;
@@ -297,6 +416,7 @@ function ConnectedCard({ connector: c, onIndex, onDisconnect, indexing, progress
   logs?: string[];
   showLogs?: boolean;
 }) {
+  const { t } = useI18n();
   const logEndRef = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState(false);
 
@@ -305,74 +425,74 @@ function ConnectedCard({ connector: c, onIndex, onDisconnect, indexing, progress
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        padding: "20px",
-        background: hovered ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.015)",
-        border: `1px solid ${colors.green}25`,
-        borderRadius: "10px",
-        transition: "all 0.2s",
-        position: "relative",
-        overflow: "hidden",
+        padding: "24px",
+        background: hovered ? colors.surfaceHover : colors.surface,
+        border: `1px solid ${hovered ? colors.borderHover : colors.border}`,
+        borderRadius: radii.lg,
+        transition: `all ${transitions.normal}`,
+        animation: "troveFadeIn 0.3s ease",
       }}
     >
-      {/* Green accent top bar */}
-      <div style={{
-        position: "absolute", top: 0, left: 0, right: 0, height: "2px",
-        background: `linear-gradient(90deg, ${colors.green}66, ${colors.green}22)`,
-      }} />
-
-      {/* Header row */}
-      <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
-        <span style={{ fontSize: "28px" }}>{c.icon}</span>
-        <div style={{ flex: 1 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ fontSize: "16px", fontWeight: 600, color: "#fff" }}>
+      {/* Top: icon + name + badge */}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: "14px", marginBottom: "16px" }}>
+        <span style={{ fontSize: "32px", lineHeight: 1 }}>{c.icon}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
+            <span style={{
+              fontSize: "15px", fontWeight: 600, color: colors.text,
+              fontFamily: fonts.sans,
+            }}>
               {c.name}
             </span>
-            <span style={{
-              width: "7px", height: "7px", borderRadius: "50%",
-              background: colors.green, boxShadow: `0 0 6px ${colors.green}`,
-              display: "inline-block",
-            }} />
+            <StatusBadge status="connected" />
           </div>
-          <p style={{ fontSize: "12px", color: colors.textDim, margin: "2px 0 0", lineHeight: "1.4" }}>
+          <p style={{
+            fontSize: "13px", color: colors.textMuted, margin: 0,
+            fontFamily: fonts.sans, lineHeight: "1.4",
+            overflow: "hidden", textOverflow: "ellipsis",
+            display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+          }}>
             {c.description}
           </p>
         </div>
       </div>
 
-      {/* Stats row */}
+      {/* Item count */}
       <div style={{
-        display: "flex", gap: "20px", padding: "10px 14px",
-        background: "rgba(255,255,255,0.02)", borderRadius: "6px",
-        marginBottom: "14px",
+        display: "flex", alignItems: "center", gap: "16px",
+        padding: "12px 16px", marginBottom: "16px",
+        background: "rgba(255,255,255,0.02)", borderRadius: radii.md,
       }}>
         <div>
-          <div style={{ fontSize: "20px", fontWeight: 700, color: colors.brand, fontFamily: fonts.mono }}>
+          <div style={{ fontSize: "22px", fontWeight: 600, color: colors.text, fontFamily: fonts.sans }}>
             {(c.itemCount ?? 0).toLocaleString()}
           </div>
-          <div style={{ fontSize: "10px", color: colors.textGhost, fontFamily: fonts.mono }}>items</div>
+          <div style={{ fontSize: "11px", color: colors.textDim, fontFamily: fonts.sans }}>{t("sources.itemsIndexed").toLowerCase()}</div>
         </div>
         {c.tokenEnv && (
-          <div>
-            <div style={{ fontSize: "12px", fontWeight: 600, color: c.tokenSet ? colors.green : colors.textGhost, fontFamily: fonts.mono }}>
-              {c.tokenSet ? "Set" : "Missing"}
+          <div style={{ marginLeft: "auto", textAlign: "right" }}>
+            <div style={{
+              fontSize: "12px", fontWeight: 500, fontFamily: fonts.sans,
+              color: c.tokenSet ? colors.success : colors.textDim,
+            }}>
+              {c.tokenSet ? t("sources.tokenSet") : t("sources.tokenMissing")}
             </div>
             <div style={{ fontSize: "10px", color: colors.textGhost, fontFamily: fonts.mono }}>{c.tokenEnv}</div>
           </div>
         )}
       </div>
 
-      {/* Progress bar during indexing */}
+      {/* Indexing progress bar */}
       {indexing && (
-        <div style={{ marginBottom: "10px" }}>
+        <div style={{ marginBottom: "14px" }}>
           <div style={{
             display: "flex", justifyContent: "space-between", alignItems: "center",
-            marginBottom: "4px",
+            marginBottom: "6px",
           }}>
-            <span style={{ fontSize: "10px", fontFamily: fonts.mono, color: colors.brand }}>
-              Indexing...
+            <span style={{ fontSize: "12px", fontFamily: fonts.sans, color: colors.textMuted, fontWeight: 500 }}>
+              {t("sources.indexing")}
             </span>
-            <span style={{ fontSize: "10px", fontFamily: fonts.mono, color: colors.textMuted }}>
+            <span style={{ fontSize: "12px", fontFamily: fonts.sans, color: colors.textDim }}>
               {progress.toLocaleString()} items
             </span>
           </div>
@@ -382,38 +502,30 @@ function ConnectedCard({ connector: c, onIndex, onDisconnect, indexing, progress
           }}>
             <div style={{
               height: "100%",
-              background: `linear-gradient(90deg, ${colors.brand}, ${colors.cyan})`,
+              background: `linear-gradient(90deg, ${colors.brand}, #fb923c)`,
               borderRadius: "2px",
               width: progress > 0 ? "100%" : "30%",
-              animation: progress > 0 ? "none" : "indeterminate 1.5s ease-in-out infinite",
+              animation: progress > 0 ? "none" : "troveIndeterminate 1.5s ease-in-out infinite",
               transition: "width 0.3s ease",
             }} />
           </div>
-          <style>{`
-            @keyframes indeterminate {
-              0% { transform: translateX(-100%); }
-              100% { transform: translateX(400%); }
-            }
-          `}</style>
         </div>
       )}
 
-      {/* Log panel */}
+      {/* Log panel (collapsed by default, shown during/after indexing) */}
       {showLogs && logs && logs.length > 0 && (
         <div style={{
-          marginBottom: "10px", padding: "10px 12px",
-          background: "#050505", border: `1px solid ${colors.border}`,
-          borderRadius: "6px", maxHeight: "150px", overflowY: "auto",
-          fontFamily: fonts.mono, fontSize: "10px", lineHeight: "1.6",
+          marginBottom: "14px", padding: "12px 14px",
+          background: "rgba(255,255,255,0.02)", border: `1px solid ${colors.border}`,
+          borderRadius: radii.md, maxHeight: "120px", overflowY: "auto",
+          fontSize: "11px", lineHeight: "1.7", fontFamily: fonts.sans,
         }}>
           {logs.map((line, i) => (
             <div key={i} style={{
-              color: line.startsWith("✓") ? colors.green
-                : line.startsWith("✗") ? "#f87171"
-                : line.startsWith("►") ? colors.brand
-                : line.includes("Redacted") ? "#fbbf24"
-                : colors.textDim,
-              whiteSpace: "pre-wrap", wordBreak: "break-all",
+              color: line.startsWith("Done") ? colors.success
+                : line.startsWith("Error") ? colors.error
+                : line.includes("Redacted") ? colors.warning
+                : colors.textMuted,
             }}>
               {line}
             </div>
@@ -428,39 +540,45 @@ function ConnectedCard({ connector: c, onIndex, onDisconnect, indexing, progress
           onClick={onIndex}
           disabled={indexing}
           style={{
-            flex: 1, padding: "9px 16px", fontSize: "12px", fontFamily: fonts.mono,
-            fontWeight: 600, letterSpacing: "0.04em",
-            background: indexing ? "rgba(255,255,255,0.02)" : `${colors.brand}15`,
-            border: `1px solid ${indexing ? colors.border : colors.brand + "44"}`,
-            borderRadius: "6px", color: indexing ? colors.textDim : colors.brand,
-            cursor: indexing ? "wait" : "pointer", transition: "all 0.15s",
+            flex: 1, padding: "10px 16px", fontSize: "13px",
+            fontFamily: fonts.sans, fontWeight: 500,
+            background: indexing ? "transparent" : colors.brand,
+            border: indexing ? `1px solid ${colors.border}` : "none",
+            borderRadius: radii.md,
+            color: indexing ? colors.textDim : "#fff",
+            cursor: indexing ? "wait" : "pointer",
+            transition: `all ${transitions.fast}`,
           }}
         >
-          {indexing ? `${progress.toLocaleString()} items...` : "Re-index"}
+          {indexing ? `${progress.toLocaleString()} items...` : t("sources.index")}
         </button>
-        {hovered && (
-          <button
-            onClick={onDisconnect}
-            style={{
-              padding: "9px 14px", fontSize: "11px", fontFamily: fonts.mono,
-              background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)",
-              borderRadius: "6px", color: "#f87171", cursor: "pointer",
-              animation: "fadeIn 0.15s ease",
-            }}
-          >
-            Disconnect
-          </button>
-        )}
+        <button
+          onClick={onDisconnect}
+          style={{
+            padding: "10px 16px", fontSize: "13px",
+            fontFamily: fonts.sans, fontWeight: 500,
+            background: "transparent",
+            border: `1px solid ${hovered ? "rgba(248,113,113,0.3)" : colors.border}`,
+            borderRadius: radii.md,
+            color: hovered ? colors.error : colors.textDim,
+            cursor: "pointer",
+            transition: `all ${transitions.fast}`,
+            opacity: hovered ? 1 : 0.6,
+          }}
+        >
+          {t("sources.disconnect")}
+        </button>
       </div>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Available card — clickable setup
-// ---------------------------------------------------------------------------
+/* ------------------------------------------------------------------ */
+/*  Available card                                                     */
+/* ------------------------------------------------------------------ */
 
 function AvailableCard({ connector: c, onSetup }: { connector: ConnectorInfo; onSetup: () => void }) {
+  const { t } = useI18n();
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -469,25 +587,30 @@ function AvailableCard({ connector: c, onSetup }: { connector: ConnectorInfo; on
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        padding: "20px",
-        background: hovered ? "rgba(255,255,255,0.035)" : "rgba(255,255,255,0.015)",
-        border: `1px solid ${hovered ? colors.brand + "44" : colors.border}`,
-        borderRadius: "10px",
+        padding: "24px",
+        background: hovered ? colors.surfaceHover : colors.surface,
+        border: `1px solid ${hovered ? colors.borderHover : colors.border}`,
+        borderRadius: radii.lg,
         cursor: "pointer",
-        transition: "all 0.2s",
+        transition: `all ${transitions.normal}`,
         transform: hovered ? "translateY(-2px)" : "none",
-        boxShadow: hovered ? "0 4px 20px rgba(0,0,0,0.3)" : "none",
+        animation: "troveFadeIn 0.3s ease",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "10px" }}>
-        <span style={{ fontSize: "28px" }}>{c.icon}</span>
-        <span style={{ fontSize: "15px", fontWeight: 600, color: hovered ? "#fff" : colors.text }}>
-          {c.name}
-        </span>
+      <div style={{ marginBottom: "14px" }}>
+        <span style={{ fontSize: "32px", lineHeight: 1 }}>{c.icon}</span>
+      </div>
+      <div style={{
+        fontSize: "15px", fontWeight: 600, color: colors.text,
+        fontFamily: fonts.sans, marginBottom: "6px",
+      }}>
+        {c.name}
       </div>
       <p style={{
-        fontSize: "12px", color: colors.textDim, margin: "0 0 14px",
-        lineHeight: "1.5",
+        fontSize: "13px", color: colors.textMuted, margin: "0 0 16px",
+        fontFamily: fonts.sans, lineHeight: "1.5",
+        overflow: "hidden", textOverflow: "ellipsis",
+        display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
       }}>
         {c.description}
       </p>
@@ -495,76 +618,86 @@ function AvailableCard({ connector: c, onSetup }: { connector: ConnectorInfo; on
         display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
         {c.requiresToken && (
-          <span style={{ fontSize: "10px", color: colors.textGhost, fontFamily: fonts.mono }}>
-            Requires API token
+          <span style={{ fontSize: "11px", color: colors.textDim, fontFamily: fonts.sans }}>
+            {t("sources.requiresToken")}
           </span>
         )}
         <span style={{
           marginLeft: "auto",
-          fontSize: "11px", fontFamily: fonts.mono, fontWeight: 600,
-          color: colors.brand, letterSpacing: "0.04em",
-          padding: "4px 14px", borderRadius: "20px",
-          background: hovered ? `${colors.brand}20` : "transparent",
-          border: `1px solid ${hovered ? colors.brand + "44" : colors.brand + "22"}`,
-          transition: "all 0.15s",
+          fontSize: "13px", fontFamily: fonts.sans, fontWeight: 500,
+          color: hovered ? "#fff" : colors.brand,
+          padding: "6px 16px", borderRadius: radii.full,
+          background: hovered ? colors.brand : "transparent",
+          border: hovered ? "none" : `1px solid ${colors.brand}44`,
+          transition: `all ${transitions.fast}`,
         }}>
-          Connect
+          {t("sources.connect")}
         </span>
       </div>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Coming soon card — compact, muted
-// ---------------------------------------------------------------------------
+/* ------------------------------------------------------------------ */
+/*  Coming soon card                                                   */
+/* ------------------------------------------------------------------ */
 
 function ComingSoonCard({ connector: c }: { connector: ConnectorInfo }) {
   return (
     <div style={{
-      padding: "16px",
-      background: "rgba(255,255,255,0.01)",
+      padding: "24px",
+      background: colors.surface,
       border: `1px solid ${colors.border}`,
-      borderRadius: "8px",
-      opacity: 0.55,
-      display: "flex", alignItems: "center", gap: "10px",
+      borderRadius: radii.lg,
+      opacity: 0.5,
+      animation: "troveFadeIn 0.3s ease",
     }}>
-      <span style={{ fontSize: "22px" }}>{c.icon}</span>
-      <div>
-        <div style={{ fontSize: "13px", fontWeight: 600, color: colors.text }}>{c.name}</div>
-        <div style={{ fontSize: "10px", color: colors.textGhost, fontFamily: fonts.mono }}>Coming soon</div>
+      <div style={{ marginBottom: "14px" }}>
+        <span style={{ fontSize: "28px", lineHeight: 1, filter: "grayscale(0.5)" }}>{c.icon}</span>
       </div>
+      <div style={{
+        fontSize: "14px", fontWeight: 600, color: colors.textMuted,
+        fontFamily: fonts.sans, marginBottom: "6px",
+      }}>
+        {c.name}
+      </div>
+      <StatusBadge status="coming_soon" />
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Loading skeleton
-// ---------------------------------------------------------------------------
+/* ------------------------------------------------------------------ */
+/*  Loading skeleton                                                   */
+/* ------------------------------------------------------------------ */
 
 function LoadingSkeleton() {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: "12px" }}>
-      {Array.from({ length: 4 }).map((_, i) => (
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "repeat(3, 1fr)",
+      gap: "16px",
+    }}>
+      {Array.from({ length: 6 }).map((_, i) => (
         <div key={i} style={{
-          height: "140px", borderRadius: "10px",
-          background: "rgba(255,255,255,0.015)", border: `1px solid ${colors.border}`,
-          animation: `pulse 1.5s ease-in-out ${i * 0.1}s infinite`,
+          height: "180px", borderRadius: radii.lg,
+          background: colors.surface, border: `1px solid ${colors.border}`,
+          animation: `trovePulse 1.5s ease-in-out ${i * 0.1}s infinite`,
         }} />
       ))}
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Setup Dialog
-// ---------------------------------------------------------------------------
+/* ------------------------------------------------------------------ */
+/*  Setup Dialog                                                       */
+/* ------------------------------------------------------------------ */
 
 function SetupDialog({ connector: c, onClose, onComplete }: {
   connector: ConnectorInfo;
   onClose: () => void;
   onComplete: () => void;
 }) {
+  const { t } = useI18n();
   const [values, setValues] = useState<Record<string, string>>({});
   const [token, setToken] = useState("");
   const [saving, setSaving] = useState(false);
@@ -576,7 +709,7 @@ function SetupDialog({ connector: c, onClose, onComplete }: {
   const handleSave = async () => {
     if (step === "token") {
       if (!token.trim()) {
-        setError("Token is required");
+        setError(t("sources.tokenRequired"));
         return;
       }
       setStep("config");
@@ -597,7 +730,7 @@ function SetupDialog({ connector: c, onClose, onComplete }: {
       await api.setupConnector(c.id, values, token || undefined);
       onComplete();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Setup failed");
+      setError(err instanceof Error ? err.message : t("sources.setupFailed"));
       setSaving(false);
     }
   };
@@ -605,80 +738,97 @@ function SetupDialog({ connector: c, onClose, onComplete }: {
   const totalSteps = c.requiresToken && !c.tokenSet ? 2 : 1;
   const currentStep = step === "token" ? 1 : totalSteps;
 
+  const inputStyle: React.CSSProperties = {
+    width: "100%", padding: "11px 14px", boxSizing: "border-box",
+    background: "rgba(255,255,255,0.04)", border: `1px solid ${colors.border}`,
+    borderRadius: radii.md, color: colors.text, fontSize: "14px",
+    fontFamily: fonts.sans, outline: "none",
+    transition: `border-color ${transitions.fast}`,
+  };
+
   return (
     <div
       onClick={onClose}
       style={{
-        position: "fixed", inset: 0, zIndex: 1000,
-        background: "rgba(0,0,0,0.75)", backdropFilter: "blur(12px)",
+        position: "fixed", inset: 0, zIndex: zIndex.modal,
+        background: "rgba(0,0,0,0.6)", backdropFilter: "blur(16px)",
         display: "flex", alignItems: "center", justifyContent: "center",
-        animation: "fadeIn 0.2s ease",
+        animation: "troveFadeIn 0.2s ease",
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "#0a0a0a", border: `1px solid rgba(255,255,255,0.08)`,
-          borderRadius: "12px", width: "min(92vw, 460px)",
+          background: colors.surfaceModal,
+          border: `1px solid ${colors.border}`,
+          borderRadius: radii.xl, width: "min(92vw, 480px)",
           maxHeight: "85vh", overflow: "auto",
-          boxShadow: "0 24px 48px rgba(0,0,0,0.6)",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.5)",
         }}
       >
         {/* Header */}
         <div style={{
-          padding: "20px 24px 16px", display: "flex", alignItems: "center", gap: "14px",
+          padding: "24px 28px 20px", display: "flex", alignItems: "center", gap: "16px",
         }}>
-          <span style={{ fontSize: "32px" }}>{c.icon}</span>
+          <span style={{ fontSize: "36px", lineHeight: 1 }}>{c.icon}</span>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: "17px", fontWeight: 600, color: "#fff" }}>
-              Connect {c.name}
+            <div style={{
+              fontSize: "18px", fontWeight: 600, color: colors.text,
+              fontFamily: fonts.sans,
+            }}>
+              {t("sources.connect")} {c.name}
             </div>
             {totalSteps > 1 && (
-              <div style={{ fontSize: "11px", color: colors.textDim, fontFamily: fonts.mono, marginTop: "2px" }}>
-                Step {currentStep} of {totalSteps}
+              <div style={{
+                fontSize: "13px", color: colors.textMuted, fontFamily: fonts.sans,
+                marginTop: "2px",
+              }}>
+                {t("sources.stepOf").replace("{current}", String(currentStep)).replace("{total}", String(totalSteps))}
               </div>
             )}
           </div>
           <button onClick={onClose} style={{
-            background: "rgba(255,255,255,0.04)", border: `1px solid ${colors.border}`,
-            borderRadius: "6px", width: "28px", height: "28px",
-            color: colors.textMuted, fontSize: "14px", cursor: "pointer",
+            background: colors.surface, border: `1px solid ${colors.border}`,
+            borderRadius: radii.sm, width: "32px", height: "32px",
+            color: colors.textMuted, fontSize: "16px", cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center",
+            transition: `all ${transitions.fast}`,
           }}>
             x
           </button>
         </div>
 
-        {/* Progress bar */}
+        {/* Step indicator bar */}
         {totalSteps > 1 && (
-          <div style={{ padding: "0 24px 16px" }}>
+          <div style={{ padding: "0 28px 20px" }}>
             <div style={{
-              height: "3px", background: "rgba(255,255,255,0.04)", borderRadius: "2px",
+              height: "3px", background: "rgba(255,255,255,0.06)", borderRadius: "2px",
               overflow: "hidden",
             }}>
               <div style={{
                 height: "100%", width: `${(currentStep / totalSteps) * 100}%`,
-                background: colors.brand, borderRadius: "2px",
+                background: `linear-gradient(90deg, ${colors.brand}, #fb923c)`,
+                borderRadius: "2px",
                 transition: "width 0.3s ease",
               }} />
             </div>
           </div>
         )}
 
-        <div style={{ padding: "0 24px 24px" }}>
+        <div style={{ padding: "0 28px 28px" }}>
           {/* Step 1: Token */}
           {step === "token" && (
             <div>
               <p style={{
-                fontSize: "13px", color: colors.textDim, margin: "0 0 16px",
-                lineHeight: "1.6",
+                fontSize: "14px", color: colors.textMuted, margin: "0 0 20px",
+                fontFamily: fonts.sans, lineHeight: "1.6",
               }}>
                 {c.tokenHelp}
               </p>
 
               <label style={{
-                display: "block", fontSize: "12px", fontWeight: 500,
-                color: colors.textMuted, marginBottom: "8px",
+                display: "block", fontSize: "13px", fontWeight: 500,
+                color: colors.textMuted, fontFamily: fonts.sans, marginBottom: "8px",
               }}>
                 {c.tokenEnv}
               </label>
@@ -688,15 +838,9 @@ function SetupDialog({ connector: c, onClose, onComplete }: {
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") handleSave(); }}
-                placeholder="Paste your token here..."
-                style={{
-                  width: "100%", padding: "10px 14px", boxSizing: "border-box",
-                  background: "rgba(255,255,255,0.03)", border: `1px solid ${colors.border}`,
-                  borderRadius: "8px", color: colors.text, fontSize: "13px",
-                  fontFamily: fonts.mono, outline: "none",
-                  transition: "border-color 0.15s",
-                }}
-                onFocus={(e) => { e.currentTarget.style.borderColor = colors.brand + "66"; }}
+                placeholder={t("sources.pasteToken")}
+                style={inputStyle}
+                onFocus={(e) => { e.currentTarget.style.borderColor = colors.borderFocus; }}
                 onBlur={(e) => { e.currentTarget.style.borderColor = colors.border; }}
               />
               {c.tokenUrl && (
@@ -706,11 +850,11 @@ function SetupDialog({ connector: c, onClose, onComplete }: {
                   rel="noopener noreferrer"
                   style={{
                     display: "inline-flex", alignItems: "center", gap: "4px",
-                    marginTop: "8px", fontSize: "12px", color: colors.brand,
-                    textDecoration: "none",
+                    marginTop: "10px", fontSize: "13px", color: colors.brand,
+                    textDecoration: "none", fontFamily: fonts.sans,
                   }}
                 >
-                  Get your token {"->"}
+                  {t("sources.getToken")} &rarr;
                 </a>
               )}
             </div>
@@ -721,36 +865,47 @@ function SetupDialog({ connector: c, onClose, onComplete }: {
             <div>
               {c.requiresToken && c.tokenSet && (
                 <div style={{
-                  marginBottom: "16px", padding: "10px 14px", borderRadius: "8px",
-                  background: colors.green + "08", border: `1px solid ${colors.green}20`,
-                  fontSize: "12px", color: colors.green, display: "flex", alignItems: "center", gap: "8px",
+                  marginBottom: "20px", padding: "12px 16px", borderRadius: radii.md,
+                  background: "rgba(52,211,153,0.06)", border: `1px solid rgba(52,211,153,0.15)`,
+                  fontSize: "13px", color: colors.success, fontFamily: fonts.sans,
+                  display: "flex", alignItems: "center", gap: "10px",
                 }}>
-                  <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: colors.green, display: "inline-block" }} />
-                  {c.tokenEnv} is set
+                  <span style={{
+                    width: "7px", height: "7px", borderRadius: "50%",
+                    background: colors.success, display: "inline-block",
+                  }} />
+                  {c.tokenEnv} {t("sources.isSet")}
                 </div>
               )}
 
               {c.requiresToken && !c.tokenSet && token && (
                 <div style={{
-                  marginBottom: "16px", padding: "10px 14px", borderRadius: "8px",
-                  background: colors.green + "08", border: `1px solid ${colors.green}20`,
-                  fontSize: "12px", color: colors.green, display: "flex", alignItems: "center", gap: "8px",
+                  marginBottom: "20px", padding: "12px 16px", borderRadius: radii.md,
+                  background: "rgba(52,211,153,0.06)", border: `1px solid rgba(52,211,153,0.15)`,
+                  fontSize: "13px", color: colors.success, fontFamily: fonts.sans,
+                  display: "flex", alignItems: "center", gap: "10px",
                 }}>
-                  <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: colors.green, display: "inline-block" }} />
-                  Token provided
+                  <span style={{
+                    width: "7px", height: "7px", borderRadius: "50%",
+                    background: colors.success, display: "inline-block",
+                  }} />
+                  {t("sources.tokenProvided")}
                 </div>
               )}
 
               {c.fields.length === 0 ? (
-                <p style={{ fontSize: "13px", color: colors.textDim, margin: "0 0 16px", lineHeight: "1.6" }}>
-                  No additional configuration needed. Click Connect to finish.
+                <p style={{
+                  fontSize: "14px", color: colors.textMuted, margin: "0 0 20px",
+                  fontFamily: fonts.sans, lineHeight: "1.6",
+                }}>
+                  {t("sources.noConfigNeeded")}
                 </p>
               ) : (
                 c.fields.map((field) => (
-                  <div key={field.key} style={{ marginBottom: "16px" }}>
+                  <div key={field.key} style={{ marginBottom: "20px" }}>
                     <label style={{
-                      display: "block", fontSize: "12px", fontWeight: 500,
-                      color: colors.textMuted, marginBottom: "8px",
+                      display: "block", fontSize: "13px", fontWeight: 500,
+                      color: colors.textMuted, fontFamily: fonts.sans, marginBottom: "8px",
                     }}>
                       {field.label}
                       {field.required && <span style={{ color: colors.brand }}> *</span>}
@@ -759,15 +914,16 @@ function SetupDialog({ connector: c, onClose, onComplete }: {
                       <button
                         onClick={() => setValues((v) => ({ ...v, [field.key]: v[field.key] === "true" ? "false" : "true" }))}
                         style={{
-                          padding: "8px 18px", fontSize: "12px", fontFamily: fonts.mono,
-                          background: values[field.key] === "true" ? colors.brand + "18" : "rgba(255,255,255,0.03)",
+                          padding: "10px 20px", fontSize: "13px", fontFamily: fonts.sans,
+                          fontWeight: 500,
+                          background: values[field.key] === "true" ? `${colors.brand}15` : colors.surface,
                           border: `1px solid ${values[field.key] === "true" ? colors.brand + "44" : colors.border}`,
-                          borderRadius: "8px",
-                          color: values[field.key] === "true" ? colors.brand : colors.textDim,
-                          cursor: "pointer", transition: "all 0.15s",
+                          borderRadius: radii.md,
+                          color: values[field.key] === "true" ? colors.brand : colors.textMuted,
+                          cursor: "pointer", transition: `all ${transitions.fast}`,
                         }}
                       >
-                        {values[field.key] === "true" ? "Yes" : "No"}
+                        {values[field.key] === "true" ? t("sources.yes") : t("sources.no")}
                       </button>
                     ) : (
                       <>
@@ -777,17 +933,17 @@ function SetupDialog({ connector: c, onClose, onComplete }: {
                           onChange={(e) => setValues((v) => ({ ...v, [field.key]: e.target.value }))}
                           placeholder={field.placeholder}
                           style={{
-                            width: "100%", padding: "10px 14px", boxSizing: "border-box",
-                            background: "rgba(255,255,255,0.03)", border: `1px solid ${colors.border}`,
-                            borderRadius: "8px", color: colors.text, fontSize: "13px",
-                            fontFamily: fonts.mono, outline: "none",
-                            transition: "border-color 0.15s",
+                            ...inputStyle,
+                            fontFamily: field.type === "number" ? fonts.sans : fonts.sans,
                           }}
-                          onFocus={(e) => { e.currentTarget.style.borderColor = colors.brand + "66"; }}
+                          onFocus={(e) => { e.currentTarget.style.borderColor = colors.borderFocus; }}
                           onBlur={(e) => { e.currentTarget.style.borderColor = colors.border; }}
                         />
                         {field.placeholder && !field.required && (
-                          <div style={{ fontSize: "10px", color: colors.textGhost, marginTop: "4px", fontFamily: fonts.mono }}>
+                          <div style={{
+                            fontSize: "11px", color: colors.textGhost, marginTop: "6px",
+                            fontFamily: fonts.sans,
+                          }}>
                             {field.placeholder}
                           </div>
                         )}
@@ -802,9 +958,9 @@ function SetupDialog({ connector: c, onClose, onComplete }: {
           {/* Error */}
           {error && (
             <div style={{
-              padding: "10px 14px", marginBottom: "16px", borderRadius: "8px",
-              background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)",
-              fontSize: "12px", fontFamily: fonts.mono, color: "#f87171",
+              padding: "12px 16px", marginBottom: "20px", borderRadius: radii.md,
+              background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)",
+              fontSize: "13px", fontFamily: fonts.sans, color: colors.error,
             }}>
               {error}
             </div>
@@ -816,34 +972,38 @@ function SetupDialog({ connector: c, onClose, onComplete }: {
               <button
                 onClick={() => setStep("token")}
                 style={{
-                  padding: "10px 18px", fontSize: "12px",
-                  background: "none", border: `1px solid ${colors.border}`,
-                  borderRadius: "8px", color: colors.textMuted, cursor: "pointer",
+                  padding: "11px 20px", fontSize: "13px", fontWeight: 500,
+                  fontFamily: fonts.sans,
+                  background: "transparent", border: `1px solid ${colors.border}`,
+                  borderRadius: radii.md, color: colors.textMuted, cursor: "pointer",
+                  transition: `all ${transitions.fast}`,
                 }}
               >
-                Back
+                {t("sources.back")}
               </button>
             )}
             <div style={{ flex: 1 }} />
             <button onClick={onClose} style={{
-              padding: "10px 18px", fontSize: "12px",
-              background: "none", border: `1px solid ${colors.border}`,
-              borderRadius: "8px", color: colors.textMuted, cursor: "pointer",
+              padding: "11px 20px", fontSize: "13px", fontWeight: 500,
+              fontFamily: fonts.sans,
+              background: "transparent", border: `1px solid ${colors.border}`,
+              borderRadius: radii.md, color: colors.textMuted, cursor: "pointer",
+              transition: `all ${transitions.fast}`,
             }}>
-              Cancel
+              {t("sources.cancel")}
             </button>
             <button
               onClick={handleSave}
               disabled={saving}
               style={{
-                padding: "10px 24px", fontSize: "12px", fontWeight: 600,
+                padding: "11px 28px", fontSize: "13px", fontWeight: 600,
+                fontFamily: fonts.sans,
                 background: colors.brand, border: "none",
-                borderRadius: "8px", color: "#fff", cursor: saving ? "wait" : "pointer",
-                opacity: saving ? 0.6 : 1, transition: "all 0.15s",
-                boxShadow: `0 2px 8px ${colors.brand}44`,
+                borderRadius: radii.md, color: "#fff", cursor: saving ? "wait" : "pointer",
+                opacity: saving ? 0.6 : 1, transition: `all ${transitions.fast}`,
               }}
             >
-              {saving ? "Connecting..." : step === "token" ? "Next" : "Connect"}
+              {saving ? t("sources.connecting") : step === "token" ? t("sources.next") : t("sources.connect")}
             </button>
           </div>
         </div>

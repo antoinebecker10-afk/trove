@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.png" width="800" alt="Trove banner" />
+  <img src="assets/trove-banner.jpg" width="800" alt="Trove banner" />
 </p>
 
 <h1 align="center">🦞 Trove</h1>
@@ -41,6 +41,21 @@ No cloud. No subscriptions. Your data stays on your machine.
 
 ---
 
+## Two interfaces, one index
+
+Trove has **two faces** built on the same index:
+
+| | For Humans | For AI Agents |
+|---|---|---|
+| **Interface** | Desktop app, CLI, web dashboard | MCP server (7 tools) |
+| **How it works** | Visual search, file browser, source management | Embeddings-powered API queries |
+| **Cost** | Free — runs locally | **50-100x fewer tokens** vs. filesystem scanning |
+| **Use case** | "Where's that screenshot?" | Agent: `trove_find("terrain screenshot")` → instant result |
+
+The AI side is the game-changer: instead of your agent reading 50+ files to find what it needs (10,000-50,000 tokens), it queries Trove's pre-computed embeddings and gets ranked results in **200-500 tokens**. Same index, fraction of the cost.
+
+---
+
 ## Features
 
 **Search everything from one place**
@@ -48,27 +63,27 @@ No cloud. No subscriptions. Your data stays on your machine.
 - Keyword fallback with smart AND/OR matching — always finds something
 - AI-powered answers via local Ollama (Mistral for RAG, Qwen3 for chat)
 
-**14 connectors, plug and play**
-- Connect Notion, GitHub, Slack, Figma, Discord, and 8 more with a setup wizard
+**15 connectors, plug and play**
+- Connect Notion, GitHub, Slack, Figma, Discord, OpenClaw, Claude Code, and 8 more
 - Each connector is ~100-200 lines of TypeScript. Easy to build, easy to contribute.
 
 **Incremental indexing + live watch**
 - Only re-indexes changed files — skips unchanged content based on modification timestamps
 - `trove watch` monitors your local sources in real-time and auto-reindexes on changes
-- SSE streaming progress in the web dashboard
+- SSE streaming progress in the dashboard
 
-**Web dashboard**
-- Dual-pane file manager with drag & drop
-- Masonry launcher with thumbnails
+**Desktop app (Electron)**
+- `npx trove-os desktop` — one command, full app
 - Semantic search with AI answers
-- Sources panel to connect/disconnect services in 1 click
-- Real-time indexing progress with SSE streaming
-- System monitor (RAM, disk, CPU)
-- Keyboard shortcuts, context menus, preview modals
+- Source management — connect/disconnect services in 1 click
+- File browser with dual-pane drag & drop
+- Keyboard shortcuts, preview modals, context menus
 
-**MCP server for Claude Code**
+**MCP server — the AI bridge**
 - 7 tools: find, open, locate, search, list-sources, get-content, reindex
-- Ask Claude "find my terrain screenshots" directly from your IDE
+- Works with Claude Code, OpenClaw, Cursor, Windsurf, Cline, and any MCP-compatible agent
+- Pre-computed embeddings → instant results, minimal tokens
+- Ask your agent "find my Figma mockups" — it queries the index, not your filesystem
 
 **Local AI stack — no cloud required**
 - **Embeddings**: Ollama (`nomic-embed-text`), Transformers.js (`all-MiniLM-L6-v2`), local TF-IDF, or Anthropic (optional)
@@ -114,7 +129,11 @@ npx trove-os index            # Index your content
 npx trove-os search "query"   # Search
 ```
 
-## Use with Claude Code (MCP)
+## Use with AI Agents
+
+Trove acts as a **search engine for AI agents** — instead of scanning your entire filesystem (thousands of tokens), agents query Trove's index and get instant results (10-50 tokens). This dramatically reduces token usage and response time.
+
+### Claude Code (MCP)
 
 ```bash
 claude mcp add trove -- npx trove-os mcp
@@ -122,11 +141,47 @@ claude mcp add trove -- npx trove-os mcp
 
 Then ask Claude:
 
-> "Find my Bevy terrain screenshots from last week"
+> "Find my terrain screenshots from last week"
 
 > "What repos do I have about multiplayer?"
 
 > "Where's that BPMN diagram?"
+
+### OpenClaw
+
+Trove ships with a ready-to-use [SKILL.md](SKILL.md) for [OpenClaw](https://github.com/openclaw/openclaw). One command to install:
+
+```bash
+# Copy the skill to your OpenClaw skills directory
+cp -r . ~/.openclaw/skills/trove
+
+# Or install via MCP config
+openclaw config set mcpServers.trove.command "npx"
+openclaw config set mcpServers.trove.args '["trove-os", "mcp"]'
+```
+
+OpenClaw gets access to all 7 Trove tools. Ask it:
+
+> "Find my Figma mockups for the landing page"
+
+> "What did I post on Discord about Rust ECS?"
+
+### Any MCP-compatible agent
+
+Trove's MCP server works with **any agent that supports Model Context Protocol** — OpenClaw, Claude Code, Cursor, Windsurf, Cline, and more. One server, every agent.
+
+```bash
+npx trove-os mcp   # Start MCP server (stdio)
+```
+
+### Token savings
+
+| Without Trove | With Trove | Savings |
+|---------------|------------|---------|
+| Agent scans filesystem (read 50+ files) | `trove_locate` → 5 paths | **~95% fewer tokens** |
+| Agent reads file contents to find matches | `trove_find` → relevant content only | **~90% fewer tokens** |
+| Agent lists directories recursively | `trove_search` → ranked results | **~98% fewer tokens** |
+| 10,000-50,000 tokens per file search | 200-500 tokens per Trove query | **50-100x reduction** |
 
 ---
 
@@ -149,6 +204,8 @@ Then ask Claude:
 | 📦 **Dropbox** | Dropbox API | Files, folders, text content |
 | 📘 **Confluence** | Atlassian API | Spaces, pages, blog posts |
 | 💧 **Raindrop.io** | Raindrop API | Bookmarks, collections, highlights |
+| 🤖 **OpenClaw** | REST API + local files | Conversations, memories, skills |
+| 🧠 **Claude Code** | Local files (~/.claude) | Conversations, project memories, session transcripts |
 
 > All connectors use **raw fetch** — zero external SDK dependencies. Each one is a single TypeScript file with rate limiting, pagination, and abort support.
 

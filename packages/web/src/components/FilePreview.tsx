@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
-import { colors, fonts, TYPE_META } from "../lib/theme";
+import { motion } from "framer-motion";
+import { colors, fonts, radii, transitions, shadows, zIndex, TYPE_META, SOURCE_META } from "../lib/theme";
 import { api, type ApiContentItem } from "../lib/api";
+import { useI18n } from "../lib/i18n";
 
 interface FilePreviewProps {
   item: ApiContentItem;
@@ -21,6 +23,7 @@ function getExt(uri: string): string {
 }
 
 export function FilePreview({ item, onClose, onMove }: FilePreviewProps) {
+  const { t } = useI18n();
   const [textContent, setTextContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const ext = getExt(item.uri);
@@ -34,7 +37,7 @@ export function FilePreview({ item, onClose, onMove }: FilePreviewProps) {
     if (isText) {
       fetch(api.fileServeUrl(item.uri))
         .then((r) => r.text())
-        .then((t) => { setTextContent(t); setLoading(false); })
+        .then((txt) => { setTextContent(txt); setLoading(false); })
         .catch(() => { setTextContent("Failed to load file content."); setLoading(false); });
     } else {
       setLoading(false);
@@ -49,54 +52,101 @@ export function FilePreview({ item, onClose, onMove }: FilePreviewProps) {
   }, [onClose]);
 
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
       onClick={onClose}
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 1000,
-        background: "rgba(0,0,0,0.85)",
-        backdropFilter: "blur(8px)",
+        zIndex: zIndex.modal,
+        background: "rgba(0,0,0,0.60)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        animation: "fadeIn 0.2s ease",
       }}
     >
-      <div
+      <motion.div
+        initial={{ opacity: 0, scale: 0.97 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.97 }}
+        transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "#0c0c0c",
-          border: `1px solid ${meta.color}44`,
-          borderRadius: "4px",
+          background: colors.surfaceModal,
+          border: `1px solid ${colors.border}`,
+          borderRadius: radii.xl,
+          boxShadow: shadows.lg,
           width: "min(90vw, 900px)",
           maxHeight: "90vh",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
+          position: "relative",
         }}
       >
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          style={{
+            position: "absolute",
+            top: "14px",
+            right: "14px",
+            zIndex: 10,
+            width: "32px",
+            height: "32px",
+            borderRadius: radii.full,
+            border: `1px solid ${colors.border}`,
+            background: colors.surface,
+            color: colors.textMuted,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 0,
+            transition: `all ${transitions.fast}`,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = colors.surfaceHover;
+            e.currentTarget.style.borderColor = colors.borderHover;
+            e.currentTarget.style.color = colors.text;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = colors.surface;
+            e.currentTarget.style.borderColor = colors.border;
+            e.currentTarget.style.color = colors.textMuted;
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M11 3L3 11M3 3L11 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+        </button>
+
         {/* Header */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "10px",
-            padding: "14px 18px",
+            gap: "12px",
+            padding: "18px 56px 18px 20px",
             borderBottom: `1px solid ${colors.border}`,
             flexShrink: 0,
           }}
         >
-          <span style={{ fontSize: "18px", color: meta.color, fontFamily: fonts.mono }}>
+          <span style={{ fontSize: "18px" }}>
             {meta.icon}
           </span>
           <span
             style={{
               flex: 1,
-              fontSize: "13px",
+              fontSize: "14px",
               fontWeight: 600,
-              color: "#fff",
-              fontFamily: fonts.mono,
+              color: colors.text,
+              fontFamily: fonts.sans,
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
@@ -106,32 +156,18 @@ export function FilePreview({ item, onClose, onMove }: FilePreviewProps) {
           </span>
           <span
             style={{
-              fontSize: "9px",
-              padding: "2px 7px",
-              border: `1px solid ${meta.color}44`,
-              borderRadius: "1px",
+              fontSize: "11px",
+              fontWeight: 500,
+              padding: "3px 10px",
+              background: `${meta.color}15`,
+              borderRadius: radii.full,
               color: meta.color,
-              fontFamily: fonts.mono,
-              letterSpacing: "0.12em",
-              textTransform: "uppercase",
+              fontFamily: fonts.sans,
+              lineHeight: "1.4",
             }}
           >
             {meta.label}
           </span>
-          <button
-            onClick={onClose}
-            style={{
-              background: "none",
-              border: "none",
-              color: colors.textMuted,
-              fontSize: "18px",
-              cursor: "pointer",
-              fontFamily: fonts.mono,
-              padding: "0 4px",
-            }}
-          >
-            x
-          </button>
         </div>
 
         {/* Preview content */}
@@ -139,7 +175,7 @@ export function FilePreview({ item, onClose, onMove }: FilePreviewProps) {
           style={{
             flex: 1,
             overflow: "auto",
-            padding: isImage || isVideo || isPdf ? "0" : "18px",
+            padding: isImage || isVideo || isPdf ? "0" : "20px",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -147,8 +183,8 @@ export function FilePreview({ item, onClose, onMove }: FilePreviewProps) {
           }}
         >
           {loading ? (
-            <span style={{ color: colors.textMuted, fontSize: "12px", fontFamily: fonts.mono }}>
-              LOADING...
+            <span style={{ color: colors.textMuted, fontSize: "13px", fontFamily: fonts.sans }}>
+              {t("filePreview.loading")}
             </span>
           ) : isImage ? (
             <img
@@ -190,12 +226,12 @@ export function FilePreview({ item, onClose, onMove }: FilePreviewProps) {
               style={{
                 textAlign: "center",
                 color: colors.textDim,
-                fontSize: "12px",
-                fontFamily: fonts.mono,
+                fontSize: "13px",
+                fontFamily: fonts.sans,
               }}
             >
-              <p style={{ marginBottom: "8px" }}>Preview not available for {ext || "this file type"}</p>
-              <p style={{ color: colors.textGhost }}>Use OPEN to view in default app</p>
+              <p style={{ marginBottom: "8px" }}>{t("filePreview.noPreview")} {ext || "this file type"}</p>
+              <p style={{ color: colors.textGhost }}>Use {t("filePreview.open")} to view in default app</p>
             </div>
           )}
         </div>
@@ -206,7 +242,7 @@ export function FilePreview({ item, onClose, onMove }: FilePreviewProps) {
             display: "flex",
             alignItems: "center",
             gap: "8px",
-            padding: "12px 18px",
+            padding: "14px 20px",
             borderTop: `1px solid ${colors.border}`,
             flexShrink: 0,
           }}
@@ -214,7 +250,7 @@ export function FilePreview({ item, onClose, onMove }: FilePreviewProps) {
           <span
             style={{
               flex: 1,
-              fontSize: "10px",
+              fontSize: "11px",
               color: colors.textDim,
               fontFamily: fonts.mono,
               overflow: "hidden",
@@ -225,23 +261,23 @@ export function FilePreview({ item, onClose, onMove }: FilePreviewProps) {
             {item.uri}
           </span>
           <PreviewAction
-            label="OPEN"
+            label={t("filePreview.open")}
             color={colors.brand}
-            onClick={() => { api.openFile(item.uri).catch(() => {}); }}
+            onClick={() => { api.openFile(item.uri).catch((err: unknown) => console.warn("[trove]", err)); }}
           />
           <PreviewAction
-            label="MOVE"
+            label={t("filePreview.move")}
             color={colors.cyan}
             onClick={() => onMove(item)}
           />
           <PreviewAction
-            label="COPY PATH"
-            color={colors.textDim}
-            onClick={() => { navigator.clipboard.writeText(item.uri).catch(() => {}); }}
+            label={t("filePreview.copyPath")}
+            color={colors.textMuted}
+            onClick={() => { navigator.clipboard.writeText(item.uri).catch((err: unknown) => console.warn("[trove]", err)); }}
           />
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }
 
@@ -250,17 +286,23 @@ function PreviewAction({ label, color, onClick }: { label: string; color: string
     <button
       onClick={onClick}
       style={{
-        fontSize: "9px",
-        fontFamily: fonts.mono,
-        letterSpacing: "0.08em",
-        padding: "4px 12px",
+        fontSize: "12px",
+        fontFamily: fonts.sans,
+        fontWeight: 500,
+        padding: "5px 14px",
         background: `${color}15`,
-        border: `1px solid ${color}44`,
-        borderRadius: "2px",
+        border: "none",
+        borderRadius: radii.full,
         color,
         cursor: "pointer",
-        transition: "all 0.1s",
+        transition: `all ${transitions.fast}`,
         flexShrink: 0,
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = `${color}25`;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = `${color}15`;
       }}
     >
       {label}

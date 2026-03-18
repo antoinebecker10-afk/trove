@@ -178,16 +178,16 @@ async function driveApiFetch<T>(
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
       // Don't leak response body
-      await response.text().catch(() => {});
+      await response.text().catch(() => { /* drain body */ });
       throw new Error(
         `Google Drive API auth error (${response.status}). Check your OAuth token.`,
       );
     }
     if (response.status === 429) {
-      await response.text().catch(() => {});
+      await response.text().catch(() => { /* drain body */ });
       throw new Error("Google Drive API rate limit exceeded.");
     }
-    await response.text().catch(() => {});
+    await response.text().catch(() => { /* drain body */ });
     throw new Error(`Google Drive API error (${response.status})`);
   }
 
@@ -206,7 +206,7 @@ async function driveApiFetchText(
   const response = await fetch(url, { headers, signal });
 
   if (!response.ok) {
-    await response.text().catch(() => {});
+    await response.text().catch(() => { /* drain body */ });
     return "";
   }
 

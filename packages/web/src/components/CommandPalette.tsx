@@ -1,12 +1,143 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { colors, fonts, TYPE_META } from "../lib/theme";
+import { motion, AnimatePresence } from "framer-motion";
+import { colors, fonts, radii, transitions, shadows, zIndex } from "../lib/theme";
 import { api, type ApiContentItem } from "../lib/api";
+import { useI18n } from "../lib/i18n";
 
-/**
- * Cmd+K / Ctrl+K global search overlay.
- * "Ghost Search" — type what you vaguely remember, get instant results.
- */
+const TYPE_ICONS: Record<string, string> = {
+  github: "\u{1F419}",
+  image: "\u{1F5BC}\uFE0F",
+  video: "\u{1F3AC}",
+  file: "\u{1F4C4}",
+  document: "\u{1F4D1}",
+  bookmark: "\u{1F516}",
+  code: "\u{1F4BB}",
+  note: "\u{1F4DD}",
+  message: "\u{1F4AC}",
+};
+
+/* ---------------------------------------------------------------------- */
+/*  Framer Motion variants                                                 */
+/* ---------------------------------------------------------------------- */
+
+const overlayVariants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { duration: 0.2, ease: "easeOut" as const } },
+  exit: { opacity: 0, transition: { duration: 0.15, ease: "easeIn" as const } },
+};
+
+const containerVariants = {
+  hidden: { opacity: 0, scale: 0.96, y: -10 },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    y: 0,
+    transition: { duration: 0.25, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] },
+  },
+  exit: {
+    opacity: 0,
+    scale: 0.96,
+    y: -8,
+    transition: { duration: 0.15, ease: "easeIn" as const },
+  },
+};
+
+/* ---------------------------------------------------------------------- */
+/*  Spinner                                                                */
+/* ---------------------------------------------------------------------- */
+
+function Spinner() {
+  return (
+    <motion.span
+      animate={{ rotate: 360 }}
+      transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }}
+      style={{
+        display: "inline-block",
+        width: 14,
+        height: 14,
+        border: `2px solid ${colors.border}`,
+        borderTopColor: colors.brand,
+        borderRadius: radii.full,
+        marginRight: 8,
+        verticalAlign: "middle",
+      }}
+    />
+  );
+}
+
+/* ---------------------------------------------------------------------- */
+/*  Kbd tag                                                                */
+/* ---------------------------------------------------------------------- */
+
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd
+      style={{
+        display: "inline-block",
+        fontSize: 11,
+        fontFamily: fonts.sans,
+        fontWeight: 500,
+        color: colors.textMuted,
+        background: colors.surface,
+        border: `1px solid ${colors.border}`,
+        borderRadius: radii.sm,
+        padding: "2px 6px",
+        lineHeight: "18px",
+      }}
+    >
+      {children}
+    </kbd>
+  );
+}
+
+/* ---------------------------------------------------------------------- */
+/*  Action button (pill)                                                   */
+/* ---------------------------------------------------------------------- */
+
+function ActionButton({
+  label,
+  onClick,
+  visible,
+}: {
+  label: string;
+  onClick: (e: React.MouseEvent) => void;
+  visible: boolean;
+}) {
+  if (!visible) return null;
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        fontSize: 12,
+        fontFamily: fonts.sans,
+        fontWeight: 500,
+        padding: "3px 10px",
+        background: colors.brandGlow,
+        border: "1px solid rgba(249,115,22,0.20)",
+        borderRadius: radii.full,
+        color: colors.brand,
+        cursor: "pointer",
+        transition: `all ${transitions.fast}`,
+        whiteSpace: "nowrap",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = "rgba(249,115,22,0.18)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = colors.brandGlow;
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+/* ---------------------------------------------------------------------- */
+/*  CommandPalette                                                         */
+/* ---------------------------------------------------------------------- */
+
 export function CommandPalette() {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ApiContentItem[]>([]);
@@ -14,8 +145,9 @@ export function CommandPalette() {
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const listRef = useRef<HTMLDivElement>(null);
 
-  // Global keyboard shortcut
+  /* ---- Global keyboard shortcut ---- */
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -28,7 +160,7 @@ export function CommandPalette() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  // Focus input when opened
+  /* ---- Focus input when opened ---- */
   useEffect(() => {
     if (open) {
       setTimeout(() => inputRef.current?.focus(), 50);
@@ -38,7 +170,7 @@ export function CommandPalette() {
     }
   }, [open]);
 
-  // Debounced search
+  /* ---- Debounced search ---- */
   const search = useCallback(async (q: string) => {
     if (!q.trim()) {
       setResults([]);
@@ -62,285 +194,349 @@ export function CommandPalette() {
     debounceRef.current = setTimeout(() => search(value), 200);
   };
 
-  // Keyboard navigation
+  /* ---- Keyboard navigation ---- */
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setSelected((s) => Math.min(s + 1, results.length - 1));
+      setSelected((s) => {
+        const next = Math.min(s + 1, results.length - 1);
+        scrollToItem(next);
+        return next;
+      });
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setSelected((s) => Math.max(s - 1, 0));
+      setSelected((s) => {
+        const next = Math.max(s - 1, 0);
+        scrollToItem(next);
+        return next;
+      });
     } else if (e.key === "Enter" && results[selected]) {
       e.preventDefault();
       handleAction(results[selected], "open");
     }
   };
 
+  const scrollToItem = (index: number) => {
+    const list = listRef.current;
+    if (!list) return;
+    const item = list.children[index] as HTMLElement | undefined;
+    item?.scrollIntoView({ block: "nearest" });
+  };
+
+  /* ---- Actions ---- */
   const handleAction = (item: ApiContentItem, action: "open" | "copy") => {
     if (action === "copy") {
-      navigator.clipboard.writeText(item.uri).catch(() => {});
+      navigator.clipboard.writeText(item.uri).catch((err: unknown) => console.warn("[trove]", err));
       setOpen(false);
       return;
     }
-    // For local files, try to open; for GitHub, open URL
     if (item.source === "github" || item.uri.startsWith("http")) {
       window.open(item.uri, "_blank", "noopener");
     } else {
-      // Copy path to clipboard — the user/IDE can open it
-      navigator.clipboard.writeText(item.uri).catch(() => {});
+      navigator.clipboard.writeText(item.uri).catch((err: unknown) => console.warn("[trove]", err));
     }
     setOpen(false);
   };
 
-  if (!open) return null;
+  /* ---- Determine what to show in the body ---- */
+  const hasQuery = query.trim().length > 0;
+  const showEmpty = !hasQuery && !loading;
+  const showNoResults = hasQuery && !loading && results.length === 0;
+  const showResults = results.length > 0;
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        onClick={() => setOpen(false)}
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(0,0,0,0.7)",
-          backdropFilter: "blur(4px)",
-          zIndex: 1000,
-          animation: "fadeIn 0.15s ease",
-        }}
-      />
-
-      {/* Palette */}
-      <div
-        style={{
-          position: "fixed",
-          top: "15%",
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: "100%",
-          maxWidth: "640px",
-          background: "#111",
-          border: `1px solid ${colors.border}`,
-          borderRadius: "8px",
-          overflow: "hidden",
-          zIndex: 1001,
-          animation: "fadeIn 0.15s ease",
-          boxShadow: `0 25px 60px rgba(0,0,0,0.5), 0 0 0 1px ${colors.brand}22`,
-        }}
-      >
-        {/* Input */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            padding: "0 16px",
-            borderBottom: `1px solid ${colors.border}`,
-          }}
-        >
-          <span style={{ color: colors.brandDim, fontSize: "16px", marginRight: "12px" }}>
-            ⌕
-          </span>
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={(e) => handleInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Find anything — describe what you remember..."
+    <AnimatePresence>
+      {open && (
+        <>
+          {/* Overlay */}
+          <motion.div
+            key="command-overlay"
+            variants={overlayVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            onClick={() => setOpen(false)}
             style={{
-              flex: 1,
-              background: "transparent",
-              border: "none",
-              outline: "none",
-              color: colors.text,
-              fontSize: "15px",
-              padding: "16px 0",
-              fontFamily: fonts.mono,
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.60)",
+              backdropFilter: "blur(20px)",
+              WebkitBackdropFilter: "blur(20px)",
+              zIndex: zIndex.command,
             }}
           />
-          <kbd
+
+          {/* Container */}
+          <motion.div
+            key="command-container"
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
             style={{
-              fontSize: "10px",
-              color: colors.textDim,
+              position: "fixed",
+              top: "15%",
+              left: "50%",
+              transform: "translateX(-50%)",
+              width: "100%",
+              maxWidth: 640,
+              background: colors.surfaceModal,
               border: `1px solid ${colors.border}`,
-              borderRadius: "3px",
-              padding: "2px 6px",
-              fontFamily: fonts.mono,
+              borderRadius: radii.xl,
+              boxShadow: shadows.lg,
+              overflow: "hidden",
+              zIndex: zIndex.commandOverlay,
+              display: "flex",
+              flexDirection: "column",
             }}
           >
-            ESC
-          </kbd>
-        </div>
-
-        {/* Results */}
-        <div style={{ maxHeight: "400px", overflowY: "auto" }}>
-          {loading && (
+            {/* ---- Search input ---- */}
             <div
               style={{
-                padding: "20px",
-                textAlign: "center",
-                color: colors.brand,
-                fontSize: "11px",
-                fontFamily: fonts.mono,
-                letterSpacing: "0.1em",
+                display: "flex",
+                alignItems: "center",
+                padding: "0 20px",
+                borderBottom: `1px solid ${colors.border}`,
               }}
             >
-              SEARCHING...
-            </div>
-          )}
-
-          {!loading && query && results.length === 0 && (
-            <div
-              style={{
-                padding: "20px",
-                textAlign: "center",
-                color: colors.textDim,
-                fontSize: "12px",
-                fontFamily: fonts.mono,
-              }}
-            >
-              No results. Try different terms or reindex.
-            </div>
-          )}
-
-          {results.map((item, i) => {
-            const meta = TYPE_META[item.type] ?? TYPE_META.file;
-            const isSelected = i === selected;
-
-            return (
-              <div
-                key={item.id}
-                onMouseEnter={() => setSelected(i)}
-                onClick={() => handleAction(item, "open")}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "12px",
-                  padding: "10px 16px",
-                  cursor: "pointer",
-                  background: isSelected ? "rgba(249,115,22,0.08)" : "transparent",
-                  borderLeft: isSelected ? `2px solid ${colors.brand}` : "2px solid transparent",
-                  transition: "all 0.1s",
-                }}
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                style={{ flexShrink: 0, marginRight: 12 }}
               >
-                <span style={{ fontSize: "16px", color: meta.color, fontFamily: fonts.mono }}>
-                  {meta.icon}
-                </span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontSize: "13px",
-                      color: isSelected ? "#fff" : colors.text,
-                      fontFamily: fonts.mono,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {item.title}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "11px",
-                      color: colors.textDim,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {item.description}
-                  </div>
-                </div>
+                <circle
+                  cx="7"
+                  cy="7"
+                  r="5.5"
+                  stroke={colors.textMuted}
+                  strokeWidth="1.5"
+                />
+                <line
+                  x1="11.1"
+                  y1="11.1"
+                  x2="14"
+                  y2="14"
+                  stroke={colors.textMuted}
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
 
-                {/* Actions */}
-                <div style={{ display: "flex", gap: "4px", flexShrink: 0 }}>
-                  <ActionButton
-                    label="OPEN"
-                    onClick={(e) => { e.stopPropagation(); handleAction(item, "open"); }}
-                    visible={isSelected}
-                  />
-                  <ActionButton
-                    label="PATH"
-                    onClick={(e) => { e.stopPropagation(); handleAction(item, "copy"); }}
-                    visible={isSelected}
-                  />
-                </div>
+              <input
+                ref={inputRef}
+                value={query}
+                onChange={(e) => handleInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={t("commandPalette.searchAnything")}
+                style={{
+                  flex: 1,
+                  background: "transparent",
+                  border: "none",
+                  outline: "none",
+                  color: colors.text,
+                  fontSize: 16,
+                  fontFamily: fonts.sans,
+                  fontWeight: 400,
+                  padding: "16px 0",
+                  lineHeight: "24px",
+                }}
+              />
 
-                <span
+              <Kbd>Esc</Kbd>
+            </div>
+
+            {/* ---- Body ---- */}
+            <div
+              ref={listRef}
+              style={{
+                maxHeight: 400,
+                overflowY: "auto",
+                overflowX: "hidden",
+              }}
+            >
+              {/* Loading */}
+              {loading && (
+                <div
                   style={{
-                    fontSize: "9px",
-                    color: meta.color,
-                    fontFamily: fonts.mono,
-                    letterSpacing: "0.08em",
-                    textTransform: "uppercase",
-                    flexShrink: 0,
+                    padding: "32px 20px",
+                    textAlign: "center",
+                    color: colors.textMuted,
+                    fontSize: 13,
+                    fontFamily: fonts.sans,
                   }}
                 >
-                  {meta.label}
-                </span>
-              </div>
-            );
-          })}
-        </div>
+                  <Spinner />
+                  Searching...
+                </div>
+              )}
 
-        {/* Footer hint */}
-        <div
-          style={{
-            padding: "8px 16px",
-            borderTop: `1px solid ${colors.border}`,
-            display: "flex",
-            gap: "16px",
-            justifyContent: "center",
-          }}
-        >
-          {[
-            { key: "↑↓", label: "navigate" },
-            { key: "↵", label: "open" },
-            { key: "esc", label: "close" },
-          ].map(({ key, label }) => (
-            <span key={key} style={{ fontSize: "10px", color: colors.textGhost, fontFamily: fonts.mono }}>
-              <kbd style={{
-                border: `1px solid ${colors.border}`,
-                borderRadius: "2px",
-                padding: "1px 4px",
-                marginRight: "4px",
-              }}>
-                {key}
-              </kbd>
-              {label}
-            </span>
-          ))}
-        </div>
-      </div>
-    </>
-  );
-}
+              {/* Empty state */}
+              {showEmpty && (
+                <div
+                  style={{
+                    padding: "48px 20px",
+                    textAlign: "center",
+                    color: colors.textDim,
+                    fontSize: 14,
+                    fontFamily: fonts.sans,
+                  }}
+                >
+                  {t("commandPalette.typeToSearch")}
+                </div>
+              )}
 
-function ActionButton({
-  label,
-  onClick,
-  visible,
-}: {
-  label: string;
-  onClick: (e: React.MouseEvent) => void;
-  visible: boolean;
-}) {
-  if (!visible) return null;
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        fontSize: "9px",
-        fontFamily: fonts.mono,
-        letterSpacing: "0.08em",
-        padding: "2px 8px",
-        background: "rgba(249,115,22,0.1)",
-        border: `1px solid ${colors.brand}44`,
-        borderRadius: "2px",
-        color: colors.brand,
-        cursor: "pointer",
-        transition: "all 0.1s",
-      }}
-    >
-      {label}
-    </button>
+              {/* No results */}
+              {showNoResults && (
+                <div
+                  style={{
+                    padding: "40px 20px",
+                    textAlign: "center",
+                    color: colors.textDim,
+                    fontSize: 13,
+                    fontFamily: fonts.sans,
+                  }}
+                >
+                  {t("commandPalette.noResults")}
+                </div>
+              )}
+
+              {/* Results */}
+              {showResults &&
+                results.map((item, i) => {
+                  const isSelected = i === selected;
+                  const icon = TYPE_ICONS[item.type] ?? TYPE_ICONS.file;
+
+                  return (
+                    <div
+                      key={item.id}
+                      onMouseEnter={() => setSelected(i)}
+                      onClick={() => handleAction(item, "open")}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        padding: "10px 20px",
+                        cursor: "pointer",
+                        background: isSelected
+                          ? colors.surfaceHover
+                          : "transparent",
+                        transition: `background ${transitions.fast}`,
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 18,
+                          lineHeight: 1,
+                          flexShrink: 0,
+                          width: 24,
+                          textAlign: "center",
+                        }}
+                      >
+                        {icon}
+                      </span>
+
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontSize: 14,
+                            fontWeight: 600,
+                            fontFamily: fonts.sans,
+                            color: isSelected ? "#fff" : colors.text,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            lineHeight: "20px",
+                          }}
+                        >
+                          {item.title}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            fontFamily: fonts.sans,
+                            color: colors.textMuted,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            lineHeight: "18px",
+                          }}
+                        >
+                          {item.description}
+                        </div>
+                      </div>
+
+                      {/* Action pills */}
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 6,
+                          flexShrink: 0,
+                        }}
+                      >
+                        <ActionButton
+                          label={t("commandPalette.open")}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAction(item, "open");
+                          }}
+                          visible={isSelected}
+                        />
+                        <ActionButton
+                          label={t("commandPalette.path")}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAction(item, "copy");
+                          }}
+                          visible={isSelected}
+                        />
+                      </div>
+
+                      {/* Type badge */}
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontFamily: fonts.sans,
+                          fontWeight: 500,
+                          color: colors.textDim,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {item.type.charAt(0).toUpperCase() + item.type.slice(1)}
+                      </span>
+                    </div>
+                  );
+                })}
+            </div>
+
+            {/* ---- Footer ---- */}
+            <div
+              style={{
+                padding: "10px 20px",
+                borderTop: `1px solid ${colors.border}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 16,
+                fontFamily: fonts.sans,
+                fontSize: 12,
+                color: colors.textDim,
+              }}
+            >
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <Kbd>Enter</Kbd>
+                <span>{t("commandPalette.openAction")}</span>
+              </span>
+              <span style={{ color: colors.textGhost }}>&middot;</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <Kbd>Esc</Kbd>
+                <span>{t("commandPalette.close")}</span>
+              </span>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
   );
 }

@@ -116,7 +116,7 @@ async function graphql<T>(
 
   if (!response.ok) {
     // Don't leak response body — may contain sensitive info
-    await response.text().catch(() => {});
+    await response.text().catch(() => { /* drain body */ });
     throw new Error(`Linear API error (${response.status})`);
   }
 

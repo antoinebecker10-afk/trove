@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { resolve as pathResolve, join as pathJoin } from "node:path";
 import { parseFrontmatter } from "./frontmatter.js";
 
 // --- Frontmatter parser tests ---
@@ -129,6 +130,9 @@ vi.mock("node:fs/promises", () => ({
 }));
 
 function setupVault(vaultPath: string, files: Record<string, string>) {
+  // Resolve the vault path so mock keys match what the connector produces on this OS
+  const resolved = pathResolve(vaultPath);
+
   // Clear mocks
   for (const key of Object.keys(mockFiles)) delete mockFiles[key];
   for (const key of Object.keys(mockStats)) delete mockStats[key];
@@ -138,20 +142,19 @@ function setupVault(vaultPath: string, files: Record<string, string>) {
   const dirs = new Map<string, Array<{ name: string; fullPath: string; isDir: boolean }>>();
 
   // Ensure vault root exists
-  dirs.set(vaultPath, []);
+  dirs.set(resolved, []);
 
   for (const [relPath, content] of Object.entries(files)) {
-    const fullPath = `${vaultPath}/${relPath}`;
-    mockFiles[fullPath] = content;
-
     const parts = relPath.split("/");
     const fileName = parts.pop()!;
+    const fullPath = pathJoin(resolved, ...parts, fileName);
+    mockFiles[fullPath] = content;
 
     // Build directory hierarchy
-    let currentDir = vaultPath;
+    let currentDir = resolved;
     for (const part of parts) {
       if (!dirs.has(currentDir)) dirs.set(currentDir, []);
-      const subDir = `${currentDir}/${part}`;
+      const subDir = pathJoin(currentDir, part);
       const existing = dirs.get(currentDir)!;
       if (!existing.find((e) => e.name === part)) {
         existing.push({ name: part, fullPath: subDir, isDir: true });
@@ -258,7 +261,7 @@ Today I worked on [[My First Note]] and #coding stuff.`,
       "real-note.md": "# Real content",
     });
     // Manually add .obsidian dir entry
-    mockDirEntries[vaultPath]!.push({
+    mockDirEntries[pathResolve(vaultPath)]!.push({
       name: ".obsidian",
       isFile: () => false,
       isDirectory: () => true,

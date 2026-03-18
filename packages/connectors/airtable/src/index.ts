@@ -61,7 +61,7 @@ async function rateLimitedFetch(
   await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_MS));
   const response = await fetch(url, { headers, signal });
   if (!response.ok) {
-    await response.text().catch(() => {});
+    await response.text().catch(() => { /* drain body */ });
     throw new Error(`Airtable API error (${response.status})`);
   }
   return response;

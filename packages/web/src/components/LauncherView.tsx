@@ -131,7 +131,7 @@ export function LauncherView({ onPreview, onMove }: LauncherViewProps) {
 
   // Load stats
   useEffect(() => {
-    api.stats().then(setStats).catch(() => {});
+    api.stats().then(setStats).catch((err: unknown) => console.warn("[trove]", err));
   }, []);
 
   // Resolve filter type key
@@ -454,7 +454,7 @@ export function LauncherView({ onPreview, onMove }: LauncherViewProps) {
                   index={i}
                   onPreview={onPreview}
                   onMove={onMove}
-                  onOpen={() => { api.openFile(item.uri).catch(() => {}); }}
+                  onOpen={() => { api.openFile(item.uri).catch((err: unknown) => console.warn("[trove]", err)); }}
                 />
               </div>
             ))}

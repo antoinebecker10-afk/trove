@@ -100,7 +100,7 @@ export class JsonStore implements Store {
     }
     await rename(tmpFile, this.filepath);
     // Ensure final file has restricted permissions (owner read/write only)
-    await chmod(this.filepath, 0o600).catch(() => {});
+    await chmod(this.filepath, 0o600).catch(() => { /* Windows: chmod not supported */ });
   }
 
   async upsertItems(items: ContentItem[]): Promise<void> {

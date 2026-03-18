@@ -97,7 +97,7 @@ async function apiFetch(
   await limiter.wait();
   const response = await fetch(url, { headers, signal });
   if (!response.ok) {
-    await response.text().catch(() => {});
+    await response.text().catch(() => { /* drain body */ });
     throw new Error(`Confluence API error (${response.status})`);
   }
   return response;

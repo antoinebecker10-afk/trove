@@ -29,6 +29,7 @@ try {
 } catch { /* .env not found — that's fine */ }
 
 import { createServer } from "node:http";
+
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { TroveEngine, registerBuiltinConnector } from "@trove/core";
 
@@ -47,6 +48,8 @@ registerBuiltinConnector("dropbox", async () => (await import(c("dropbox"))).def
 registerBuiltinConnector("confluence", async () => (await import(c("confluence"))).default);
 registerBuiltinConnector("raindrop", async () => (await import(c("raindrop"))).default);
 registerBuiltinConnector("google-drive", async () => (await import(c("google-drive"))).default);
+registerBuiltinConnector("openclaw", async () => (await import(c("openclaw"))).default);
+registerBuiltinConnector("claude-code", async () => (await import(c("claude-code"))).default);
 import {
   PORT,
   AUTH_TOKEN,

@@ -53,7 +53,7 @@ async function fetchAllPages<T>(
         );
       }
       // Don't leak response body — may contain sensitive info
-      await response.text().catch(() => {});
+      await response.text().catch(() => { /* drain body */ });
       throw new Error(`GitHub API error (${response.status})`);
     }
 

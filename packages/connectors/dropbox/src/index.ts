@@ -77,7 +77,7 @@ async function listAllFiles(
   });
 
   if (!response.ok) {
-    await response.text().catch(() => {});
+    await response.text().catch(() => { /* drain body */ });
     throw new Error(`Dropbox API error (${response.status})`);
   }
 
@@ -96,7 +96,7 @@ async function listAllFiles(
     });
 
     if (!continueRes.ok) {
-      await continueRes.text().catch(() => {});
+      await continueRes.text().catch(() => { /* drain body */ });
       throw new Error(`Dropbox API pagination error (${continueRes.status})`);
     }
 

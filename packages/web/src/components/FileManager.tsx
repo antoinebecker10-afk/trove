@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { colors, fonts } from "../lib/theme";
+import { colors, fonts, zIndex } from "../lib/theme";
 import { api } from "../lib/api";
+import { useI18n } from "../lib/i18n";
 import { FilePane } from "./FilePane";
 
 interface FileManagerProps {
@@ -33,6 +34,7 @@ function saveFavorites(favs: FavoriteItem[]) {
 }
 
 export function FileManager({ onPreview }: FileManagerProps) {
+  const { t } = useI18n();
   const [leftPath, setLeftPath] = useState("");
   const [rightPath, setRightPath] = useState("");
   const [refreshLeft, setRefreshLeft] = useState(0);
@@ -54,6 +56,23 @@ export function FileManager({ onPreview }: FileManagerProps) {
   const isDraggingDivider = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Responsive: track container width
+  const [containerWidth, setContainerWidth] = useState(1200);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const isNarrow = containerWidth < 700;  // single-pane mode
+  const isCompact = containerWidth < 500; // hide sidebar + compact toolbar
+
   // Fetch homedir from API and set initial paths + default favorites
   useEffect(() => {
     api.system().then((info: { homedir?: string }) => {
@@ -73,7 +92,7 @@ export function FileManager({ onPreview }: FileManagerProps) {
         setFavorites(defaults);
         saveFavorites(defaults);
       }
-    }).catch(() => {});
+    }).catch((err: unknown) => console.warn("[trove]", err));
   }, []);
 
   useEffect(() => {
@@ -107,7 +126,7 @@ export function FileManager({ onPreview }: FileManagerProps) {
         movedFiles.push({ from: file, newPath: result.newPath });
       }
       showToast(
-        `Moved ${files.length} file${files.length > 1 ? "s" : ""}`,
+        t("fileManager.movedFiles").replace("{count}", String(files.length)),
         async () => {
           // Undo: move files back
           try {
@@ -117,9 +136,9 @@ export function FileManager({ onPreview }: FileManagerProps) {
             }
             setRefreshLeft((n) => n + 1);
             setRefreshRight((n) => n + 1);
-            showToast("Undo complete");
+            showToast(t("fileManager.undoComplete"));
           } catch {
-            showToast("Undo failed");
+            showToast(t("fileManager.undoFailed"));
           }
         }
       );
@@ -214,15 +233,16 @@ export function FileManager({ onPreview }: FileManagerProps) {
           display: "flex",
           gap: "10px",
           alignItems: "center",
+          flexWrap: "wrap",
           flexShrink: 0,
         }}
       >
         {/* URL navigation bar */}
-        <div style={{ display: "flex", alignItems: "center", gap: "4px", flex: 1, maxWidth: "420px" }}>
-          <span style={{ fontSize: "9px", color: colors.textDim, flexShrink: 0 }}>GO</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "4px", flex: 1, maxWidth: isCompact ? "100%" : "420px", minWidth: "120px" }}>
+          <span style={{ fontSize: "9px", color: colors.textDim, flexShrink: 0 }}>{t("fileManager.go")}</span>
           <input
             type="text"
-            placeholder="Paste a path to navigate..."
+            placeholder={t("fileManager.pastePath")}
             value={urlBarValue}
             onChange={(e) => setUrlBarValue(e.target.value)}
             onKeyDown={(e) => {
@@ -266,21 +286,25 @@ export function FileManager({ onPreview }: FileManagerProps) {
           />
         </div>
 
-        <span style={{ fontSize: "9px", color: colors.textGhost }}>
-          Drag {"\u00B7"} Ctrl+Click {"\u00B7"} Dbl-click {"\u00B7"} Right-click
-        </span>
-        <span style={{ marginLeft: "auto", fontSize: "9px", color: colors.textGhost }}>
-          Del {"\u00B7"} F2 {"\u00B7"} Ctrl+C {"\u00B7"} Enter
-        </span>
+        {!isCompact && (
+          <span style={{ fontSize: "9px", color: colors.textGhost }}>
+            {t("fileManager.dragHints")}
+          </span>
+        )}
+        {!isCompact && (
+          <span style={{ marginLeft: "auto", fontSize: "9px", color: colors.textGhost }}>
+            {t("fileManager.keyHints")}
+          </span>
+        )}
       </div>
 
       {/* Main area: sidebar + dual panes */}
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-        {/* Favorites sidebar */}
+        {/* Favorites sidebar — hidden on compact */}
         <div style={{
-          width: sidebarOpen ? "160px" : "0px",
+          width: (sidebarOpen && !isCompact) ? "160px" : "0px",
           flexShrink: 0,
-          borderRight: sidebarOpen ? `1px solid ${colors.border}` : "none",
+          borderRight: (sidebarOpen && !isCompact) ? `1px solid ${colors.border}` : "none",
           background: "rgba(255,255,255,0.01)",
           overflow: "hidden",
           transition: "width 0.2s ease",
@@ -305,11 +329,11 @@ export function FileManager({ onPreview }: FileManagerProps) {
               textTransform: "uppercase",
               letterSpacing: "0.5px",
             }}>
-              Favorites
+              {t("fileManager.favorites")}
             </span>
             <button
               onClick={() => setSidebarOpen(false)}
-              title="Collapse sidebar"
+              title={t("fileManager.collapseSidebar")}
               style={{
                 fontSize: "10px",
                 background: "none",
@@ -399,7 +423,7 @@ export function FileManager({ onPreview }: FileManagerProps) {
             color: colors.textGhost,
             flexShrink: 0,
           }}>
-            Right-click to unpin
+            {t("fileManager.rightClickToUnpin")}
           </div>
 
           {/* Sidebar context menu for removing favorites */}
@@ -410,7 +434,7 @@ export function FileManager({ onPreview }: FileManagerProps) {
                 position: "fixed",
                 top: `${sidebarCtx.y}px`,
                 left: `${sidebarCtx.x}px`,
-                zIndex: 200,
+                zIndex: zIndex.sticky,
                 background: "#1a1a1a",
                 border: `1px solid ${colors.border}`,
                 borderRadius: "6px",
@@ -436,17 +460,17 @@ export function FileManager({ onPreview }: FileManagerProps) {
                 onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
               >
                 <span style={{ fontSize: "9px" }}>{"\u2715"}</span>
-                <span>Unpin</span>
+                <span>{t("fileManager.unpin")}</span>
               </div>
             </div>
           )}
         </div>
 
         {/* Sidebar collapse toggle (when closed) */}
-        {!sidebarOpen && (
+        {!sidebarOpen && !isCompact && (
           <button
             onClick={() => setSidebarOpen(true)}
-            title="Show favorites"
+            title={t("fileManager.showFavorites")}
             style={{
               width: "20px",
               flexShrink: 0,
@@ -476,10 +500,10 @@ export function FileManager({ onPreview }: FileManagerProps) {
           </button>
         )}
 
-        {/* Dual pane area */}
+        {/* Pane area — dual on wide, single on narrow */}
         <div style={{ flex: 1, display: "flex", minHeight: 0, padding: "4px", gap: 0 }}>
-          {/* Left pane */}
-          <div style={{ flex: `0 0 ${dividerPos}%`, minWidth: 0, paddingRight: "2px" }}>
+          {/* Left pane (always visible) */}
+          <div style={{ flex: isNarrow ? "1 1 100%" : `0 0 ${dividerPos}%`, minWidth: 0, paddingRight: isNarrow ? 0 : "2px" }}>
             <FilePane
               id="left"
               initialPath={leftPath}
@@ -490,51 +514,55 @@ export function FileManager({ onPreview }: FileManagerProps) {
             />
           </div>
 
-          {/* Resize divider */}
-          <div
-            onMouseDown={handleDividerMouseDown}
-            style={{
-              width: "6px",
-              flexShrink: 0,
-              cursor: "col-resize",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              zIndex: 10,
-              position: "relative",
-            }}
-            onMouseEnter={e => {
-              const dot = e.currentTarget.querySelector("[data-divider-dot]") as HTMLElement;
-              if (dot) dot.style.background = colors.brand;
-            }}
-            onMouseLeave={e => {
-              const dot = e.currentTarget.querySelector("[data-divider-dot]") as HTMLElement;
-              if (dot) dot.style.background = colors.textGhost;
-            }}
-          >
+          {/* Resize divider — hidden in single-pane mode */}
+          {!isNarrow && (
             <div
-              data-divider-dot=""
+              onMouseDown={handleDividerMouseDown}
               style={{
-                width: "3px",
-                height: "32px",
-                borderRadius: "3px",
-                background: colors.textGhost,
-                transition: "background 0.15s, height 0.15s",
+                width: "6px",
+                flexShrink: 0,
+                cursor: "col-resize",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 10,
+                position: "relative",
               }}
-            />
-          </div>
+              onMouseEnter={e => {
+                const dot = e.currentTarget.querySelector("[data-divider-dot]") as HTMLElement;
+                if (dot) dot.style.background = colors.brand;
+              }}
+              onMouseLeave={e => {
+                const dot = e.currentTarget.querySelector("[data-divider-dot]") as HTMLElement;
+                if (dot) dot.style.background = colors.textGhost;
+              }}
+            >
+              <div
+                data-divider-dot=""
+                style={{
+                  width: "3px",
+                  height: "32px",
+                  borderRadius: "3px",
+                  background: colors.textGhost,
+                  transition: "background 0.15s, height 0.15s",
+                }}
+              />
+            </div>
+          )}
 
-          {/* Right pane */}
-          <div style={{ flex: `0 0 ${100 - dividerPos}%`, minWidth: 0, paddingLeft: "2px" }}>
-            <FilePane
-              id="right"
-              initialPath={rightPath}
-              onDrop={handleDrop}
-              onPreview={onPreview}
-              onAddFavorite={addFavorite}
-              refreshKey={refreshRight}
-            />
-          </div>
+          {/* Right pane — hidden in single-pane mode */}
+          {!isNarrow && (
+            <div style={{ flex: `0 0 ${100 - dividerPos}%`, minWidth: 0, paddingLeft: "2px" }}>
+              <FilePane
+                id="right"
+                initialPath={rightPath}
+                onDrop={handleDrop}
+                onPreview={onPreview}
+                onAddFavorite={addFavorite}
+                refreshKey={refreshRight}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -557,7 +585,7 @@ export function FileManager({ onPreview }: FileManagerProps) {
             display: "flex",
             alignItems: "center",
             gap: "12px",
-            zIndex: 100,
+            zIndex: zIndex.dropdown,
             boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
             transition: "all 0.3s ease",
             backdropFilter: "blur(8px)",
@@ -591,7 +619,7 @@ export function FileManager({ onPreview }: FileManagerProps) {
                 e.currentTarget.style.borderColor = `${colors.brand}44`;
               }}
             >
-              Undo
+              {t("fileManager.undo")}
             </button>
           )}
           <button

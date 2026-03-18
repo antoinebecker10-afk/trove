@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { colors, fonts, TYPE_META } from "../lib/theme";
-import { useGlitch } from "../hooks/useGlitch";
+import { motion, AnimatePresence } from "framer-motion";
+import { colors, fonts, TYPE_META, SOURCE_META, radii, transitions } from "../lib/theme";
 import { api, type ApiContentItem } from "../lib/api";
+import { useI18n } from "../lib/i18n";
 
 interface ContentCardProps {
   item: ApiContentItem;
@@ -11,9 +12,10 @@ interface ContentCardProps {
 }
 
 export function ContentCard({ item, index, onPreview, onMove }: ContentCardProps) {
+  const { t } = useI18n();
   const [hovered, setHovered] = useState(false);
   const meta = TYPE_META[item.type] ?? TYPE_META.file;
-  const glitched = useGlitch(item.title, hovered);
+  const sourceMeta = SOURCE_META[item.source];
 
   return (
     <div
@@ -27,45 +29,33 @@ export function ContentCard({ item, index, onPreview, onMove }: ContentCardProps
         }
       }}
       style={{
-        background: hovered ? colors.surfaceHover : "rgba(255,255,255,0.015)",
-        border: `1px solid ${hovered ? meta.color + "55" : colors.border}`,
-        borderLeft: `3px solid ${hovered ? meta.color : meta.color + "44"}`,
-        borderRadius: "2px",
-        padding: "16px 18px",
+        background: hovered ? colors.surfaceHover : "transparent",
+        borderRadius: radii.md,
+        padding: "14px 16px",
         cursor: "pointer",
-        transition: "all 0.2s",
-        transform: hovered ? "translateX(3px)" : "translateX(0)",
-        animation: `fadeIn 0.3s ease ${index * 0.05}s both`,
+        transition: `all ${transitions.fast}`,
         position: "relative",
-        overflow: "hidden",
       }}
     >
-      {hovered && (
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: `radial-gradient(ellipse at 0% 50%, ${meta.color}08 0%, transparent 70%)`,
-            pointerEvents: "none",
-          }}
-        />
-      )}
       <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
+        {/* Type icon */}
         <span
           style={{
-            fontSize: "22px",
-            color: meta.color,
+            fontSize: "20px",
             flexShrink: 0,
-            marginTop: "1px",
-            fontFamily: fonts.mono,
+            marginTop: "2px",
+            width: "28px",
+            height: "28px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
           }}
         >
           {meta.icon}
         </span>
+
         <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Title row */}
           <div
             style={{
               display: "flex",
@@ -77,45 +67,74 @@ export function ContentCard({ item, index, onPreview, onMove }: ContentCardProps
           >
             <span
               style={{
-                fontSize: "13px",
-                fontWeight: "600",
-                color: hovered ? "#fff" : "#d4d4d4",
-                fontFamily: fonts.mono,
-                transition: "color 0.2s",
-                letterSpacing: "0.02em",
+                fontSize: "15px",
+                fontWeight: 600,
+                color: colors.text,
+                fontFamily: fonts.sans,
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
+                lineHeight: 1.3,
               }}
             >
-              {hovered ? glitched : item.title}
+              {item.title}
             </span>
+
+            {/* Type badge */}
             <span
               style={{
-                fontSize: "9px",
-                padding: "2px 7px",
-                border: `1px solid ${meta.color}44`,
-                borderRadius: "1px",
+                fontSize: "11px",
+                padding: "2px 8px",
+                background: `${meta.color}15`,
+                borderRadius: radii.full,
                 color: meta.color,
-                fontFamily: fonts.mono,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
+                fontFamily: fonts.sans,
+                fontWeight: 500,
                 flexShrink: 0,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+                lineHeight: 1.4,
               }}
             >
               {meta.label}
             </span>
+
+            {/* Source inline */}
+            {sourceMeta && (
+              <span
+                style={{
+                  fontSize: "11px",
+                  color: colors.textDim,
+                  fontFamily: fonts.sans,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "3px",
+                }}
+              >
+                {sourceMeta.icon}
+              </span>
+            )}
           </div>
+
+          {/* Description */}
           <p
             style={{
-              fontSize: "12px",
+              fontSize: "13px",
               color: colors.textMuted,
+              fontFamily: fonts.sans,
               margin: "0 0 8px",
-              lineHeight: "1.5",
+              lineHeight: 1.5,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
             }}
           >
             {item.description}
           </p>
+
+          {/* Tags + metadata row */}
           <div
             style={{
               display: "flex",
@@ -124,32 +143,32 @@ export function ContentCard({ item, index, onPreview, onMove }: ContentCardProps
               alignItems: "center",
             }}
           >
-            {item.tags.map((t) => (
+            {item.tags.map((tag) => (
               <span
-                key={t}
+                key={tag}
                 style={{
-                  fontSize: "10px",
-                  color: colors.textDim,
-                  fontFamily: fonts.mono,
-                  background: colors.surfaceHover,
-                  border: `1px solid rgba(255,255,255,0.06)`,
-                  padding: "1px 6px",
-                  borderRadius: "1px",
+                  fontSize: "11px",
+                  color: colors.textMuted,
+                  fontFamily: fonts.sans,
+                  background: colors.surface,
+                  padding: "2px 8px",
+                  borderRadius: radii.full,
+                  lineHeight: 1.4,
                 }}
               >
-                #{t}
+                {tag}
               </span>
             ))}
             <span
               style={{
                 marginLeft: "auto",
-                fontSize: "10px",
-                color: colors.textGhost,
-                fontFamily: fonts.mono,
+                fontSize: "11px",
+                color: colors.textDim,
+                fontFamily: fonts.sans,
               }}
             >
               {item.metadata.stars != null
-                ? `⭐ ${String(item.metadata.stars)}`
+                ? `${String(item.metadata.stars)} ${t("card.stars")}`
                 : null}
               {item.metadata.language != null
                 ? ` · ${String(item.metadata.language)}`
@@ -160,76 +179,91 @@ export function ContentCard({ item, index, onPreview, onMove }: ContentCardProps
             </span>
           </div>
 
-          {/* Actions — visible on hover */}
-          {hovered && (
-            <div
-              style={{
-                display: "flex",
-                gap: "6px",
-                marginTop: "8px",
-                paddingTop: "8px",
-                borderTop: `1px solid ${colors.border}`,
-              }}
-            >
-              {item.uri.startsWith("http") ? (
-                <a
-                  href={item.uri}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    fontSize: "9px",
-                    fontFamily: fonts.mono,
-                    letterSpacing: "0.08em",
-                    padding: "3px 10px",
-                    background: `${item.source === "discord" ? "#5865F2" : meta.color}12`,
-                    border: `1px solid ${item.source === "discord" ? "#5865F2" : meta.color}33`,
-                    borderRadius: "1px",
-                    color: item.source === "discord" ? "#5865F2" : meta.color,
-                    cursor: "pointer",
-                    transition: "all 0.15s",
-                    textDecoration: "none",
-                  }}
-                >
-                  {item.source === "github" ? "OPEN ON GITHUB" : item.source === "discord" ? "OPEN IN DISCORD" : "OPEN LINK"}
-                </a>
-              ) : (
-                <CardAction
-                  label="OPEN"
-                  color={colors.brand}
-                  onClick={() => {
-                    console.log("[trove] Opening:", item.uri);
-                    api.openFile(item.uri)
-                      .then(() => console.log("[trove] Open OK"))
-                      .catch((e) => console.error("[trove] Open failed:", e));
-                  }}
-                />
-              )}
-              <CardAction
-                label="PREVIEW"
-                color={colors.green}
-                onClick={() => onPreview(item)}
-              />
-              {item.source === "local" && (
-                <CardAction
-                  label="MOVE"
-                  color={colors.cyan}
-                  onClick={() => onMove(item)}
-                />
-              )}
-              <CardAction
-                label="COPY PATH"
-                color={colors.textDim}
-                onClick={() => {
-                  navigator.clipboard.writeText(item.uri).catch(() => {});
+          {/* Actions on hover */}
+          <AnimatePresence>
+            {hovered && (
+              <motion.div
+                initial={{ opacity: 0, y: 4, height: 0 }}
+                animate={{ opacity: 1, y: 0, height: "auto" }}
+                exit={{ opacity: 0, y: 4, height: 0 }}
+                transition={{ duration: 0.15 }}
+                style={{
+                  display: "flex",
+                  gap: "6px",
+                  marginTop: "10px",
+                  paddingTop: "10px",
+                  borderTop: `1px solid ${colors.border}`,
                 }}
-              />
-            </div>
-          )}
+              >
+                {item.uri.startsWith("http") ? (
+                  <a
+                    href={item.uri}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    style={actionStyle(item.source === "discord" ? "#5865F2" : meta.color)}
+                  >
+                    {item.source === "github"
+                      ? t("card.openOnGithub")
+                      : item.source === "discord"
+                        ? t("card.openInDiscord")
+                        : t("card.open")}
+                  </a>
+                ) : (
+                  <CardAction
+                    label={t("card.open")}
+                    color={colors.brand}
+                    onClick={() => {
+                      api.openFile(item.uri).catch((e) =>
+                        console.error("[trove] Open failed:", e),
+                      );
+                    }}
+                  />
+                )}
+                <CardAction
+                  label={t("card.preview")}
+                  color={colors.textMuted}
+                  onClick={() => onPreview(item)}
+                />
+                {item.source === "local" && (
+                  <CardAction
+                    label={t("card.move")}
+                    color={colors.textMuted}
+                    onClick={() => onMove(item)}
+                  />
+                )}
+                <CardAction
+                  label={t("card.copyPath")}
+                  color={colors.textDim}
+                  onClick={() => {
+                    navigator.clipboard.writeText(item.uri).catch((err: unknown) => console.warn("[trove]", err));
+                  }}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </div>
   );
+}
+
+function actionStyle(color: string): React.CSSProperties {
+  return {
+    fontSize: "12px",
+    fontFamily: fonts.sans,
+    fontWeight: 500,
+    padding: "4px 12px",
+    background: colors.surface,
+    border: `1px solid ${colors.border}`,
+    borderRadius: radii.full,
+    color,
+    cursor: "pointer",
+    transition: `all ${transitions.fast}`,
+    textDecoration: "none",
+    display: "inline-flex",
+    alignItems: "center",
+  };
 }
 
 function CardAction({
@@ -243,19 +277,11 @@ function CardAction({
 }) {
   return (
     <button
-      onClick={(e) => { e.stopPropagation(); onClick(); }}
-      style={{
-        fontSize: "9px",
-        fontFamily: fonts.mono,
-        letterSpacing: "0.08em",
-        padding: "3px 10px",
-        background: `${color}15`,
-        border: `1px solid ${color}44`,
-        borderRadius: "2px",
-        color,
-        cursor: "pointer",
-        transition: "all 0.1s",
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
       }}
+      style={actionStyle(color)}
     >
       {label}
     </button>

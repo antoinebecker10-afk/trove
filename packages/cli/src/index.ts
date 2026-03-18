@@ -56,6 +56,14 @@ registerBuiltinConnector("google-drive", async () => {
   const mod = await import("@trove/connector-google-drive");
   return mod.default;
 });
+registerBuiltinConnector("openclaw", async () => {
+  const mod = await import("@trove/connector-openclaw");
+  return mod.default;
+});
+registerBuiltinConnector("claude-code", async () => {
+  const mod = await import("@trove/connector-claude-code");
+  return mod.default;
+});
 
 // Load .env file if present (dotenv-free: use Node 20+ built-in)
 try {
@@ -152,6 +160,14 @@ program
   .action(async (opts) => {
     const { watchCommand } = await import("./commands/watch.js");
     await watchCommand(opts);
+  });
+
+program
+  .command("desktop")
+  .description("Launch Trove as a desktop app (Electron)")
+  .action(async () => {
+    const { desktopCommand } = await import("./commands/desktop.js");
+    await desktopCommand();
   });
 
 program.parse();

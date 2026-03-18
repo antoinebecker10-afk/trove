@@ -1,15 +1,31 @@
 import { useState } from "react";
-import { colors, fonts } from "../lib/theme";
+import { colors, fonts, transitions, radii } from "../lib/theme";
+import { useI18n } from "../lib/i18n";
 
 interface SearchBarProps {
   value: string;
   onChange: (value: string) => void;
   onSearch: () => void;
   loading?: boolean;
+  autoFocus?: boolean;
+  /** Use larger hero variant */
+  hero?: boolean;
 }
 
-export function SearchBar({ value, onChange, onSearch, loading = false }: SearchBarProps) {
+export function SearchBar({
+  value,
+  onChange,
+  onSearch,
+  loading = false,
+  autoFocus = false,
+  hero = false,
+}: SearchBarProps) {
+  const { t } = useI18n();
   const [focused, setFocused] = useState(false);
+
+  const h = hero ? "60px" : "52px";
+  const fs = hero ? "18px" : "16px";
+  const iconSize = hero ? "20" : "18";
 
   return (
     <div
@@ -17,65 +33,88 @@ export function SearchBar({ value, onChange, onSearch, loading = false }: Search
         position: "relative",
         display: "flex",
         alignItems: "center",
-        background: focused ? colors.brandSubtle : colors.surface,
-        border: `1px solid ${focused ? `${colors.brand}99` : colors.border}`,
-        borderRadius: "2px",
-        transition: "all 0.2s",
+        height: h,
+        background: colors.surface,
+        border: `1px solid ${focused ? colors.borderFocus : colors.border}`,
+        borderRadius: radii.full,
+        transition: `all ${transitions.normal}`,
         boxShadow: focused
-          ? `0 0 0 3px rgba(249,115,22,0.1), inset 0 0 20px ${colors.brandSubtle}`
-          : "none",
+          ? `0 0 0 3px rgba(249,115,22,0.12), 0 0 40px rgba(249,115,22,0.08), 0 8px 32px rgba(0,0,0,0.2)`
+          : hero
+            ? "0 0 40px rgba(249,115,22,0.05), 0 0 80px rgba(249,115,22,0.02), 0 2px 8px rgba(0,0,0,0.1)"
+            : "0 1px 3px rgba(0,0,0,0.08)",
+        paddingLeft: hero ? "22px" : "18px",
+        paddingRight: hero ? "22px" : "18px",
+        zIndex: 10,
       }}
     >
-      <span
+      {/* Search icon */}
+      <svg
+        width={iconSize}
+        height={iconSize}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke={focused ? colors.brand : colors.textMuted}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
         style={{
-          padding: "0 14px",
-          color: colors.brandDim,
-          fontSize: "18px",
-          fontFamily: fonts.mono,
+          flexShrink: 0,
+          transition: `stroke ${transitions.fast}`,
         }}
       >
-        ⌕
-      </span>
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </svg>
+
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         onKeyDown={(e) => e.key === "Enter" && onSearch()}
-        placeholder='Search — "terrain screenshot", "rust api", "invoice bpmn"...'
+        placeholder={t("search.placeholder")}
+        autoFocus={autoFocus}
         style={{
           flex: 1,
           background: "transparent",
           border: "none",
           outline: "none",
           color: colors.text,
-          fontSize: "14px",
-          padding: "14px 0",
-          fontFamily: fonts.mono,
-          letterSpacing: "0.02em",
+          fontSize: fs,
+          padding: "0 14px",
+          fontFamily: fonts.sans,
+          fontWeight: 400,
+          lineHeight: h,
+          height: "100%",
         }}
       />
-      <button
-        onClick={onSearch}
-        disabled={loading}
-        style={{
-          margin: "6px",
-          padding: "6px 18px",
-          background: colors.brandGlow,
-          border: `1px solid ${colors.brand}66`,
-          borderRadius: "2px",
-          color: loading ? colors.brandDim : colors.brand,
-          fontSize: "11px",
-          fontFamily: fonts.mono,
-          letterSpacing: "0.1em",
-          cursor: loading ? "wait" : "pointer",
-          textTransform: "uppercase",
-          transition: "all 0.15s",
-          opacity: loading ? 0.7 : 1,
-        }}
-      >
-        {loading ? "..." : "FIND"}
-      </button>
+
+      {/* Loading spinner */}
+      {loading && (
+        <svg
+          width={iconSize}
+          height={iconSize}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={colors.brand}
+          strokeWidth="2"
+          strokeLinecap="round"
+          style={{
+            flexShrink: 0,
+            animation: "spin 0.8s linear infinite",
+          }}
+        >
+          <path d="M12 2a10 10 0 0 1 10 10" />
+        </svg>
+      )}
+
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }

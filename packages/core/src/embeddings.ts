@@ -91,7 +91,7 @@ export class AnthropicEmbeddingProvider implements EmbeddingProvider {
 
     if (!response.ok) {
       // Don't leak response body — may contain sensitive info
-      await response.text().catch(() => {});
+      await response.text().catch(() => { /* drain body */ });
       throw new Error(`Anthropic embeddings API error (${response.status})`);
     }
 
@@ -134,7 +134,7 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
       });
 
       if (!response.ok) {
-        await response.text().catch(() => {});
+        await response.text().catch(() => { /* drain body */ });
         throw new Error(
           `Ollama embeddings error (${response.status}). Is Ollama running? Try: ollama pull ${this.model}`,
         );

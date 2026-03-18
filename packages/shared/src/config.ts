@@ -4,7 +4,7 @@ export const SourceConfigSchema = z.object({
   /** Connector package name or path */
   connector: z.string(),
   /** Connector-specific configuration */
-  config: z.record(z.unknown()).default({}),
+  config: z.record(z.unknown()).nullable().transform((v) => v ?? {}).default({}),
 });
 
 export type SourceConfig = z.infer<typeof SourceConfigSchema>;

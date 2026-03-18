@@ -93,7 +93,7 @@ export class NotionClient {
       }
 
       // Other errors — don't retry. Don't leak response body.
-      await res.text().catch(() => {});
+      await res.text().catch(() => { /* drain body */ });
       throw new Error(`Notion API error (${res.status})`);
     }
 

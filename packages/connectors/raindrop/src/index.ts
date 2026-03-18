@@ -63,7 +63,7 @@ async function fetchBookmarks(
     const response = await fetch(url, { headers, signal });
 
     if (!response.ok) {
-      await response.text().catch(() => {});
+      await response.text().catch(() => { /* drain body */ });
       throw new Error(`Raindrop API error (${response.status})`);
     }
 

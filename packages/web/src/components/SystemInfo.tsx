@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { colors, fonts } from "../lib/theme";
 import { api, type SystemInfo as SystemInfoType } from "../lib/api";
+import { useI18n } from "../lib/i18n";
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -15,12 +16,13 @@ function pct(used: number, total: number): number {
 }
 
 export function SystemInfo() {
+  const { t } = useI18n();
   const [info, setInfo] = useState<SystemInfoType | null>(null);
 
   useEffect(() => {
-    api.system().then(setInfo).catch(() => {});
+    api.system().then(setInfo).catch((err: unknown) => console.warn("[trove]", err));
     const interval = setInterval(() => {
-      api.system().then(setInfo).catch(() => {});
+      api.system().then(setInfo).catch((err: unknown) => console.warn("[trove]", err));
     }, 10000);
     return () => clearInterval(interval);
   }, []);
@@ -39,7 +41,7 @@ export function SystemInfo() {
       {/* RAM */}
       <div style={{ marginBottom: "8px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "3px" }}>
-          <span>RAM</span>
+          <span>{t("system.ram")}</span>
           <span>{formatBytes(info.usedMem)} / {formatBytes(info.totalMem)}</span>
         </div>
         <Bar pct={memPct} color={memPct > 80 ? "#ef4444" : colors.green} />
@@ -49,7 +51,7 @@ export function SystemInfo() {
       {info.disk.total > 0 && (
         <div style={{ marginBottom: "8px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "3px" }}>
-            <span>DISK</span>
+            <span>{t("system.disk")}</span>
             <span>{formatBytes(info.disk.free)} free</span>
           </div>
           <Bar pct={diskPct} color={diskPct > 90 ? "#ef4444" : colors.cyan} />
@@ -58,12 +60,12 @@ export function SystemInfo() {
 
       {/* CPU */}
       <div style={{ marginBottom: "4px" }}>
-        <span style={{ color: colors.textGhost }}>CPU </span>
-        <span>{info.cpus} cores</span>
+        <span style={{ color: colors.textGhost }}>{t("system.cpuCores")} </span>
+        <span>{info.cpus}</span>
       </div>
 
       <div style={{ color: colors.textGhost, fontSize: "9px", marginTop: "6px" }}>
-        {info.platform} | Node {info.nodeVersion}
+        {info.platform} | {t("system.node")} {info.nodeVersion}
       </div>
     </div>
   );

@@ -1,42 +1,46 @@
-import { colors, fonts } from "../lib/theme";
+import { colors, fonts, radii } from "../lib/theme";
 
 interface StatBadgeProps {
   label: string;
   value: string | number;
   color: string;
+  icon?: string;
 }
 
-export function StatBadge({ label, value, color }: StatBadgeProps) {
+export function StatBadge({ label, value, color, icon }: StatBadgeProps) {
   return (
     <div
       style={{
-        display: "flex",
-        flexDirection: "column",
+        display: "inline-flex",
         alignItems: "center",
-        padding: "12px 20px",
-        background: "rgba(255,255,255,0.02)",
+        gap: "8px",
+        padding: "8px 16px",
+        background: colors.surface,
         border: `1px solid ${colors.border}`,
-        borderRadius: "2px",
-        borderTop: `2px solid ${color}`,
+        borderRadius: radii.full,
       }}
     >
+      {icon && (
+        <span style={{ fontSize: "14px", flexShrink: 0 }}>{icon}</span>
+      )}
       <span
         style={{
-          fontSize: "22px",
-          fontWeight: "700",
+          fontSize: "15px",
+          fontWeight: 600,
           color,
-          fontFamily: fonts.mono,
+          fontFamily: fonts.sans,
+          lineHeight: 1,
         }}
       >
         {value}
       </span>
       <span
         style={{
-          fontSize: "10px",
-          color: colors.textDim,
-          fontFamily: fonts.mono,
-          letterSpacing: "0.1em",
-          textTransform: "uppercase",
+          fontSize: "12px",
+          color: colors.textMuted,
+          fontFamily: fonts.sans,
+          fontWeight: 400,
+          lineHeight: 1,
         }}
       >
         {label}

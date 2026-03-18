@@ -1,6 +1,25 @@
 import { useState, useEffect, useCallback, useRef, type DragEvent, type CSSProperties } from "react";
-import { colors, fonts } from "../lib/theme";
+import { colors, fonts, zIndex } from "../lib/theme";
 import { api, type FileEntry } from "../lib/api";
+import { useI18n } from "../lib/i18n";
+
+/** Track the width of a container element via ResizeObserver. */
+function usePaneWidth(ref: React.RefObject<HTMLElement | null>): number {
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setWidth(entry.contentRect.width);
+      }
+    });
+    ro.observe(el);
+    setWidth(el.getBoundingClientRect().width);
+    return () => ro.disconnect();
+  }, [ref]);
+  return width;
+}
 
 const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp"]);
 
@@ -30,6 +49,7 @@ interface FilePaneProps {
 }
 
 export function FilePane({ id, initialPath, onDrop, onPreview, onAddFavorite, refreshKey }: FilePaneProps) {
+  const { t } = useI18n();
   const [currentPath, setCurrentPath] = useState(initialPath ?? "");
   const [items, setItems] = useState<FileEntry[]>([]);
   const [parentPath, setParentPath] = useState<string | null>(null);
@@ -45,6 +65,7 @@ export function FilePane({ id, initialPath, onDrop, onPreview, onAddFavorite, re
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [removingPaths, setRemovingPaths] = useState<Set<string>>(new Set());
   const containerRef = useRef<HTMLDivElement>(null);
+  const paneWidth = usePaneWidth(containerRef);
 
   const load = useCallback(async (path?: string) => {
     setLoading(true);
@@ -90,7 +111,7 @@ export function FilePane({ id, initialPath, onDrop, onPreview, onAddFavorite, re
       } else if ((e.ctrlKey || e.metaKey) && e.key === "c" && selected.size > 0) {
         e.preventDefault();
         const paths = [...selected].join("\n");
-        navigator.clipboard.writeText(paths).catch(() => {});
+        navigator.clipboard.writeText(paths).catch((err: unknown) => console.warn("[trove]", err));
       } else if (e.key === "Enter" && selected.size === 1) {
         e.preventDefault();
         const path = [...selected][0];
@@ -199,7 +220,7 @@ export function FilePane({ id, initialPath, onDrop, onPreview, onAddFavorite, re
     const name = prompt("Folder name:");
     if (!name) return;
     const sep = currentPath.includes("/") ? "/" : "\\";
-    await api.mkDir(currentPath + sep + name).catch(() => {});
+    await api.mkDir(currentPath + sep + name).catch((err: unknown) => console.warn("[trove]", err));
     load(currentPath);
   };
 
@@ -208,7 +229,7 @@ export function FilePane({ id, initialPath, onDrop, onPreview, onAddFavorite, re
     const ok = confirm(`Delete ${selected.size} item(s)?`);
     if (!ok) return;
     for (const p of selected) {
-      await api.deleteFile(p).catch(() => {});
+      await api.deleteFile(p).catch((err: unknown) => console.warn("[trove]", err));
     }
     load(currentPath);
   };
@@ -233,7 +254,7 @@ export function FilePane({ id, initialPath, onDrop, onPreview, onAddFavorite, re
         startRename(item);
         break;
       case "copyPath":
-        navigator.clipboard.writeText(item.path).catch(() => {});
+        navigator.clipboard.writeText(item.path).catch((err: unknown) => console.warn("[trove]", err));
         break;
       case "pin":
         if (onAddFavorite) {
@@ -291,17 +312,18 @@ export function FilePane({ id, initialPath, onDrop, onPreview, onAddFavorite, re
           borderBottom: `1px solid ${colors.border}`,
           background: "rgba(255,255,255,0.02)",
           flexShrink: 0,
+          flexWrap: "wrap",
         }}
       >
         {parentPath && (
-          <ToolBtn icon="\u2190" title="Go up" onClick={() => navigate(parentPath)} />
+          <ToolBtn icon="\u2190" title={t("filePane.goUp")} onClick={() => navigate(parentPath)} />
         )}
-        <ToolBtn icon="+" title="New folder" onClick={handleNewFolder} />
+        <ToolBtn icon="+" title={t("filePane.newFolder")} onClick={handleNewFolder} />
         {selected.size > 0 && (
           <ToolBtn icon="\u2715" title="Delete" color="#ef4444" onClick={handleDelete} />
         )}
 
-        <div style={{ marginLeft: "auto", display: "flex", gap: "3px", alignItems: "center" }}>
+        <div style={{ marginLeft: "auto", display: "flex", gap: "3px", alignItems: "center", flexShrink: 1, minWidth: 0 }}>
           {/* View toggle */}
           <div style={{
             display: "flex",
@@ -325,11 +347,13 @@ export function FilePane({ id, initialPath, onDrop, onPreview, onAddFavorite, re
 
           <input
             type="text"
-            placeholder="filter..."
+            placeholder={t("filePane.filterFiles")}
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             style={{
-              width: "90px",
+              width: paneWidth < 300 ? "60px" : "90px",
+              minWidth: "40px",
+              flexShrink: 1,
               padding: "3px 6px",
               background: "rgba(255,255,255,0.03)",
               border: `1px solid ${colors.border}`,
@@ -354,6 +378,7 @@ export function FilePane({ id, initialPath, onDrop, onPreview, onAddFavorite, re
           alignItems: "center",
           gap: "3px",
           flexWrap: "nowrap",
+          whiteSpace: "nowrap",
           borderBottom: `1px solid ${colors.border}`,
           overflow: "auto",
           flexShrink: 0,
@@ -417,6 +442,7 @@ export function FilePane({ id, initialPath, onDrop, onPreview, onAddFavorite, re
               isSelected={selected.has(item.path)}
               isRemoving={removingPaths.has(item.path)}
               isDragTarget={dragOverDir === item.path}
+              paneWidth={paneWidth}
               renaming={renaming}
               renameValue={renameValue}
               onRenameChange={setRenameValue}
@@ -437,7 +463,7 @@ export function FilePane({ id, initialPath, onDrop, onPreview, onAddFavorite, re
         ) : (
           <div style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))",
+            gridTemplateColumns: `repeat(auto-fill, minmax(${paneWidth < 250 ? "80px" : "100px"}, 1fr))`,
             gap: "6px",
             padding: "8px",
           }}>
@@ -472,19 +498,45 @@ export function FilePane({ id, initialPath, onDrop, onPreview, onAddFavorite, re
           gap: "12px",
           alignItems: "center",
           flexShrink: 0,
+          flexWrap: "wrap",
           background: "rgba(255,255,255,0.015)",
         }}
       >
-        <span>{displayed.length} item{displayed.length !== 1 ? "s" : ""}</span>
+        <span>{displayed.length} {t("filePane.items")}</span>
         {selected.size > 0 && (
           <>
-            <span style={{ color: colors.brand }}>{selected.size} selected</span>
+            <span style={{ color: colors.brand }}>{selected.size} {t("filePane.selected")}</span>
             {selectedSize > 0 && (
               <span style={{ color: colors.textDim }}>{formatSize(selectedSize)}</span>
             )}
           </>
         )}
       </div>
+
+      {/* Drop zone overlay */}
+      {dragOver && (
+        <div style={{
+          position: "absolute",
+          inset: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "rgba(249,115,22,0.06)",
+          border: `2px dashed ${colors.brand}88`,
+          borderRadius: "6px",
+          zIndex: 50,
+          pointerEvents: "none",
+        }}>
+          <span style={{
+            fontSize: "12px",
+            fontFamily: fonts.mono,
+            color: colors.brand,
+            opacity: 0.8,
+          }}>
+            {t("filePane.dropHere")}
+          </span>
+        </div>
+      )}
 
       {/* Context Menu */}
       {contextMenu && (
@@ -564,6 +616,7 @@ interface ListRowProps {
   isSelected: boolean;
   isRemoving: boolean;
   isDragTarget: boolean;
+  paneWidth: number;
   renaming: string | null;
   renameValue: string;
   onRenameChange: (v: string) => void;
@@ -579,7 +632,7 @@ interface ListRowProps {
 }
 
 function ListRow({
-  item, index, isSelected, isRemoving, isDragTarget,
+  item, index, isSelected, isRemoving, isDragTarget, paneWidth,
   renaming, renameValue, onRenameChange, onRenameConfirm, onRenameCancel,
   onDragStart, onDragOverDir, onDragLeaveDir, onDropOnDir,
   onClick, onDoubleClick, onContextMenu,
@@ -587,6 +640,9 @@ function ListRow({
   const meta = TYPE_ICONS[item.type] ?? TYPE_ICONS.file;
   const isImg = IMAGE_EXTS.has(item.ext);
   const isEven = index % 2 === 0;
+  const showModified = paneWidth >= 400;
+  const showSize = paneWidth >= 300;
+  const showPath = paneWidth >= 350;
 
   const baseRowStyle: CSSProperties = {
     display: "flex",
@@ -711,8 +767,8 @@ function ListRow({
         </span>
       )}
 
-      {/* Modified date */}
-      {item.modified && (
+      {/* Modified date — hidden when pane < 400px */}
+      {showModified && item.modified && (
         <span style={{
           fontSize: "9px",
           color: colors.textGhost,
@@ -725,36 +781,38 @@ function ListRow({
         </span>
       )}
 
-      {/* Path / URL */}
-      <span
-        title={`Click to copy: ${item.path}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          navigator.clipboard.writeText(item.path).catch(() => {});
-        }}
-        style={{
-          fontSize: "8px",
-          color: colors.textGhost,
-          fontFamily: fonts.mono,
-          flexShrink: 1,
-          minWidth: "60px",
-          maxWidth: "180px",
-          textAlign: "right",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-          cursor: "copy",
-          direction: "rtl",
-          transition: "color 0.15s",
-        }}
-        onMouseEnter={e => { e.currentTarget.style.color = colors.cyan; }}
-        onMouseLeave={e => { e.currentTarget.style.color = colors.textGhost; }}
-      >
-        {item.path}
-      </span>
+      {/* Path / URL — hidden when pane < 350px */}
+      {showPath && (
+        <span
+          title={`Click to copy: ${item.path}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            navigator.clipboard.writeText(item.path).catch((err: unknown) => console.warn("[trove]", err));
+          }}
+          style={{
+            fontSize: "8px",
+            color: colors.textGhost,
+            fontFamily: fonts.mono,
+            flexShrink: 1,
+            minWidth: "40px",
+            maxWidth: paneWidth < 500 ? "100px" : "180px",
+            textAlign: "right",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            cursor: "copy",
+            direction: "rtl",
+            transition: "color 0.15s",
+          }}
+          onMouseEnter={e => { e.currentTarget.style.color = colors.cyan; }}
+          onMouseLeave={e => { e.currentTarget.style.color = colors.textGhost; }}
+        >
+          {item.path}
+        </span>
+      )}
 
-      {/* Size */}
-      {!item.isDir && (
+      {/* Size — hidden when pane < 300px */}
+      {showSize && !item.isDir && (
         <span style={{
           fontSize: "9px",
           color: colors.textGhost,
@@ -803,6 +861,9 @@ function GridTile({ item, isSelected, isRemoving, onClick, onDoubleClick, onCont
         userSelect: "none",
         opacity: isRemoving ? 0 : 1,
         transform: isRemoving ? "scale(0.8)" : "none",
+        position: "relative",
+        minWidth: 0,
+        overflow: "hidden",
       }}
       onMouseEnter={e => {
         if (!isSelected) {
@@ -839,7 +900,7 @@ function GridTile({ item, isSelected, isRemoving, onClick, onDoubleClick, onCont
         </span>
       )}
       <span
-        title={item.path}
+        title={item.name}
         style={{
           fontSize: "9px",
           fontFamily: fonts.mono,
@@ -850,7 +911,9 @@ function GridTile({ item, isSelected, isRemoving, onClick, onDoubleClick, onCont
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
           width: "100%",
-          maxWidth: "90px",
+          maxWidth: "100%",
+          padding: "0 2px",
+          boxSizing: "border-box",
         }}
       >
         {item.name}
@@ -859,7 +922,7 @@ function GridTile({ item, isSelected, isRemoving, onClick, onDoubleClick, onCont
         title={`Click to copy: ${item.path}`}
         onClick={(e) => {
           e.stopPropagation();
-          navigator.clipboard.writeText(item.path).catch(() => {});
+          navigator.clipboard.writeText(item.path).catch((err: unknown) => console.warn("[trove]", err));
         }}
         style={{
           fontSize: "7px",
@@ -869,7 +932,9 @@ function GridTile({ item, isSelected, isRemoving, onClick, onDoubleClick, onCont
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
           width: "100%",
-          maxWidth: "90px",
+          maxWidth: "100%",
+          padding: "0 2px",
+          boxSizing: "border-box",
           textAlign: "center",
           cursor: "copy",
           direction: "rtl",
@@ -901,7 +966,7 @@ function SkeletonLoader({ viewMode }: { viewMode: ViewMode }) {
     return (
       <div style={{
         display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))",
+        gridTemplateColumns: "repeat(auto-fill, minmax(80px, 1fr))",
         gap: "6px",
         padding: "8px",
       }}>
@@ -1052,7 +1117,7 @@ function ContextMenuOverlay({ x, y, item, containerRef, onAction }: {
         position: "absolute",
         top: `${relY}px`,
         left: `${relX}px`,
-        zIndex: 100,
+        zIndex: zIndex.dropdown,
         background: "#1a1a1a",
         border: `1px solid ${colors.border}`,
         borderRadius: "6px",

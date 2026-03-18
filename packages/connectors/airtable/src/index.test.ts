@@ -5,7 +5,9 @@ import type { IndexOptions, ContentItem } from "@trove/shared";
 function mockFetch(responses: Map<string, unknown>) {
   return vi.fn(async (url: string | URL | Request) => {
     const urlStr = typeof url === "string" ? url : url.toString();
-    for (const [pattern, body] of responses) {
+    // Sort patterns by length descending so more specific patterns match first
+    const sortedEntries = [...responses.entries()].sort((a, b) => b[0].length - a[0].length);
+    for (const [pattern, body] of sortedEntries) {
       if (urlStr.includes(pattern)) {
         return {
           ok: true,

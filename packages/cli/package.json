@@ -48,6 +48,8 @@
     "@trove/connector-confluence": "workspace:*",
     "@trove/connector-raindrop": "workspace:*",
     "@trove/connector-google-drive": "workspace:*",
+    "@trove/connector-openclaw": "workspace:*",
+    "@trove/connector-claude-code": "workspace:*",
     "commander": "^13.0.0",
     "chalk": "^5.4.0",
     "ora": "^8.2.0"
