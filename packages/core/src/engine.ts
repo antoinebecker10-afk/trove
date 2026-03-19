@@ -76,6 +76,13 @@ export class TroveEngine {
       );
     }
 
+    // Collect all seen IDs per connector name so that incremental cleanup
+    // only runs once per connector — after ALL sources with that connector
+    // have been processed.  This fixes a bug where multiple sources using
+    // the same connector (e.g. several "local" entries) would delete each
+    // other's items during the per-source cleanup phase.
+    const allSeenIdsByConnector = new Map<string, Set<string>>();
+
     for (const source of sources) {
       const connector = await loadConnector(source);
 
@@ -89,7 +96,12 @@ export class TroveEngine {
 
       // Incremental indexing: load existing items to skip unchanged files
       const existingIndex = await this.store.getSourceIndex(source.connector);
-      const seenIds = new Set<string>();
+
+      // Accumulate seen IDs across all sources sharing this connector name
+      if (!allSeenIdsByConnector.has(source.connector)) {
+        allSeenIdsByConnector.set(source.connector, new Set<string>());
+      }
+      const seenIds = allSeenIdsByConnector.get(source.connector)!;
 
       const batch: ContentItem[] = [];
       const BATCH_SIZE = 50;
@@ -124,8 +136,12 @@ export class TroveEngine {
         totalIndexed += batch.length;
         options?.onProgress?.(totalIndexed);
       }
+    }
 
-      // Remove items that no longer exist in the source (deleted files)
+    // Deferred cleanup: remove items that no longer exist in ANY source
+    // sharing the same connector name.
+    for (const [connectorName, seenIds] of allSeenIdsByConnector) {
+      const existingIndex = await this.store.getSourceIndex(connectorName);
       const removedIds = [...existingIndex.keys()].filter(id => !seenIds.has(id));
       if (removedIds.length > 0) {
         await this.store.removeItems(removedIds);
@@ -163,7 +179,8 @@ export class TroveEngine {
   }
 
   /**
-   * Full-text keyword search (no embeddings needed).
+   * Full-text keyword search.
+   * Uses FTS5 (O(log n) BM25-ranked) when available, falls back to brute-force.
    */
   async keywordSearch(
     query: string,
@@ -174,6 +191,19 @@ export class TroveEngine {
     const sanitized = sanitizeQuery(query);
     if (!sanitized) return [];
 
+    const limit = options.limit ?? 20;
+
+    // Try FTS5 first (SQLite store)
+    if (this.store.ftsSearch) {
+      const ftsResults = await this.store.ftsSearch(sanitized, {
+        type: options.type,
+        source: options.source,
+        limit,
+      });
+      if (ftsResults.length > 0) return ftsResults;
+    }
+
+    // Brute-force fallback (JSON store or FTS5 returned nothing)
     const terms = sanitized.toLowerCase().split(/\s+/);
     let items = await this.store.getAllItems();
 
@@ -191,7 +221,7 @@ export class TroveEngine {
       return terms.every((term) => haystack.includes(term));
     });
 
-    if (andMatches.length > 0) return andMatches;
+    if (andMatches.length > 0) return andMatches.slice(0, limit);
 
     // Fallback: OR matching, sorted by number of matching terms (best first)
     const orMatches = items
@@ -205,7 +235,7 @@ export class TroveEngine {
       .sort((a, b) => b.matchCount - a.matchCount)
       .map(({ item }) => item);
 
-    return orMatches;
+    return orMatches.slice(0, limit);
   }
 
   /**
