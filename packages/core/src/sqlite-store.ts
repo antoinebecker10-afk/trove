@@ -98,6 +98,18 @@ export class SqliteStore implements Store {
       CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
     `);
 
+    // FTS5 full-text search index — O(log n) keyword search instead of brute-force
+    this.db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(
+        id UNINDEXED,
+        title,
+        description,
+        tags,
+        content,
+        uri
+      );
+    `);
+
     // Create virtual table for sqlite-vec if available
     if (this.hasVec) {
       try {
@@ -154,11 +166,19 @@ export class SqliteStore implements Store {
         `)
       : null;
 
+    // FTS5: delete old entry then insert fresh (FTS5 doesn't support REPLACE)
+    const deleteFts = this.db.prepare(`DELETE FROM items_fts WHERE id = ?`);
+    const insertFts = this.db.prepare(`
+      INSERT INTO items_fts (id, title, description, tags, content, uri)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+
     const transaction = this.db.transaction((batch: ContentItem[]) => {
       for (const item of batch) {
         const embBuf = item.embedding
           ? float64ToBuffer(item.embedding)
           : null;
+        const tagsStr = JSON.stringify(item.tags);
 
         upsertItem.run(
           item.id,
@@ -166,13 +186,28 @@ export class SqliteStore implements Store {
           item.type,
           item.title,
           item.description,
-          JSON.stringify(item.tags),
+          tagsStr,
           item.uri,
           JSON.stringify(item.metadata),
           item.content ?? null,
           item.indexedAt,
           embBuf,
         );
+
+        // Update FTS5 index
+        try {
+          deleteFts.run(item.id);
+          insertFts.run(
+            item.id,
+            item.title,
+            item.description,
+            item.tags.join(" "),
+            item.content ?? "",
+            item.uri,
+          );
+        } catch {
+          // FTS5 update failed — keyword search degrades gracefully
+        }
 
         if (upsertVec && embBuf) {
           try {
@@ -290,16 +325,16 @@ export class SqliteStore implements Store {
 
       this.db.prepare("DELETE FROM items WHERE source = ?").run(source);
 
-      if (this.hasVec && ids.length > 0) {
-        const deleteVec = this.db.prepare(
-          "DELETE FROM items_vec WHERE id = ?",
-        );
+      if (ids.length > 0) {
+        const deleteFts = this.db.prepare("DELETE FROM items_fts WHERE id = ?");
+        const deleteVec = this.hasVec
+          ? this.db.prepare("DELETE FROM items_vec WHERE id = ?")
+          : null;
         const tx = this.db.transaction((idList: Array<{ id: string }>) => {
           for (const { id } of idList) {
-            try {
-              deleteVec.run(id);
-            } catch {
-              // ignore
+            try { deleteFts.run(id); } catch { /* ignore */ }
+            if (deleteVec) {
+              try { deleteVec.run(id); } catch { /* ignore */ }
             }
           }
         });
@@ -307,6 +342,7 @@ export class SqliteStore implements Store {
       }
     } else {
       this.db.prepare("DELETE FROM items").run();
+      this.db.prepare("DELETE FROM items_fts").run();
       if (this.hasVec) {
         try {
           this.db.prepare("DELETE FROM items_vec").run();
@@ -334,6 +370,7 @@ export class SqliteStore implements Store {
     if (ids.length === 0) return;
 
     const deleteItem = this.db.prepare("DELETE FROM items WHERE id = ?");
+    const deleteFts = this.db.prepare("DELETE FROM items_fts WHERE id = ?");
     const deleteVec = this.hasVec
       ? this.db.prepare("DELETE FROM items_vec WHERE id = ?")
       : null;
@@ -341,12 +378,72 @@ export class SqliteStore implements Store {
     const tx = this.db.transaction((idList: string[]) => {
       for (const id of idList) {
         deleteItem.run(id);
+        try { deleteFts.run(id); } catch { /* ignore */ }
         if (deleteVec) {
           try { deleteVec.run(id); } catch { /* ignore */ }
         }
       }
     });
     tx(ids);
+  }
+
+  /**
+   * Full-text keyword search via FTS5 — O(log n) instead of brute-force.
+   * Returns items ranked by BM25 relevance.
+   */
+  async ftsSearch(
+    query: string,
+    options?: { type?: string; source?: string; limit?: number },
+  ): Promise<ContentItem[]> {
+    const limit = options?.limit ?? 20;
+
+    // Escape FTS5 special characters and build query
+    const terms = query
+      .replace(/['"(){}[\]*:^~!]/g, "")
+      .trim()
+      .split(/\s+/)
+      .filter((t) => t.length > 1);
+
+    if (terms.length === 0) return [];
+
+    // FTS5 query: each term with implicit AND
+    const ftsQuery = terms.map((t) => `"${t}"`).join(" ");
+
+    try {
+      let sql = `
+        SELECT items_fts.id, rank
+        FROM items_fts
+        JOIN items ON items.id = items_fts.id
+        WHERE items_fts MATCH ?
+      `;
+      const params: unknown[] = [ftsQuery];
+
+      if (options?.type) {
+        sql += ` AND items.type = ?`;
+        params.push(options.type);
+      }
+      if (options?.source) {
+        sql += ` AND items.source = ?`;
+        params.push(options.source);
+      }
+
+      sql += ` ORDER BY rank LIMIT ?`;
+      params.push(limit);
+
+      const rows = this.db
+        .prepare(sql)
+        .all(...params) as Array<{ id: string; rank: number }>;
+
+      const results: ContentItem[] = [];
+      for (const row of rows) {
+        const item = await this.getItem(row.id);
+        if (item) results.push(item);
+      }
+      return results;
+    } catch {
+      // FTS5 query failed — return empty (caller can fallback)
+      return [];
+    }
   }
 
   /**

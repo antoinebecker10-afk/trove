@@ -14,6 +14,8 @@ export interface Store {
   /** Get all item IDs for a given source, with their indexed metadata.modified */
   getSourceIndex(source: string): Promise<Map<string, string | undefined>>;
   search(embedding: number[], limit: number): Promise<SearchResult[]>;
+  /** Full-text keyword search via FTS5 (SQLite) or brute-force fallback */
+  ftsSearch?(query: string, options?: { type?: string; source?: string; limit?: number }): Promise<ContentItem[]>;
   getStats(): Promise<IndexStats>;
   clear(source?: string): Promise<void>;
   /** Remove specific items by ID */

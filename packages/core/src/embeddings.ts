@@ -125,12 +125,19 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
   }
 
   async embed(texts: string[]): Promise<number[][]> {
-    const results: number[][] = [];
-    for (const text of texts) {
+    if (texts.length === 0) return [];
+
+    // Ollama /api/embed supports batch input — send all texts in one call
+    // to avoid N sequential HTTP round-trips.
+    const BATCH_SIZE = 64;
+    const allResults: number[][] = [];
+
+    for (let i = 0; i < texts.length; i += BATCH_SIZE) {
+      const batch = texts.slice(i, i + BATCH_SIZE);
       const response = await fetch(`${this.url}/api/embed`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: this.model, input: text }),
+        body: JSON.stringify({ model: this.model, input: batch }),
       });
 
       if (!response.ok) {
@@ -143,9 +150,10 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
       const data = (await response.json()) as {
         embeddings: number[][];
       };
-      results.push(data.embeddings[0]);
+      allResults.push(...data.embeddings);
     }
-    return results;
+
+    return allResults;
   }
 }
 
