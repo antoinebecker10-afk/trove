@@ -76,6 +76,13 @@ export class TroveEngine {
       );
     }
 
+    // Collect all seen IDs per connector name so that incremental cleanup
+    // only runs once per connector — after ALL sources with that connector
+    // have been processed.  This fixes a bug where multiple sources using
+    // the same connector (e.g. several "local" entries) would delete each
+    // other's items during the per-source cleanup phase.
+    const allSeenIdsByConnector = new Map<string, Set<string>>();
+
     for (const source of sources) {
       const connector = await loadConnector(source);
 
@@ -89,7 +96,12 @@ export class TroveEngine {
 
       // Incremental indexing: load existing items to skip unchanged files
       const existingIndex = await this.store.getSourceIndex(source.connector);
-      const seenIds = new Set<string>();
+
+      // Accumulate seen IDs across all sources sharing this connector name
+      if (!allSeenIdsByConnector.has(source.connector)) {
+        allSeenIdsByConnector.set(source.connector, new Set<string>());
+      }
+      const seenIds = allSeenIdsByConnector.get(source.connector)!;
 
       const batch: ContentItem[] = [];
       const BATCH_SIZE = 50;
@@ -124,8 +136,12 @@ export class TroveEngine {
         totalIndexed += batch.length;
         options?.onProgress?.(totalIndexed);
       }
+    }
 
-      // Remove items that no longer exist in the source (deleted files)
+    // Deferred cleanup: remove items that no longer exist in ANY source
+    // sharing the same connector name.
+    for (const [connectorName, seenIds] of allSeenIdsByConnector) {
+      const existingIndex = await this.store.getSourceIndex(connectorName);
       const removedIds = [...existingIndex.keys()].filter(id => !seenIds.has(id));
       if (removedIds.length > 0) {
         await this.store.removeItems(removedIds);
